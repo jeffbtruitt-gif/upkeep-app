@@ -1,0 +1,372 @@
+import { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+  useUpkeepAsset, useUpdateAsset,
+  useUpkeepNotes, useCreateNote, useUpdateNote, useDeleteNote,
+  useUpkeepMaintenance, useCreateMaintenance, useUpdateMaintenance, useDeleteMaintenance,
+  useUpkeepLinks, useCreateLink, useUpdateLink, useDeleteLink,
+  CAT_STYLES, UPKEEP_CATEGORIES, FREQ_LABELS,
+  getNextDueDate, getMaintenanceStatus,
+  type UpkeepNote, type UpkeepMaintenance, type UpkeepLink, type AssetFrequency,
+} from '@/api/upkeep';
+
+const F = '#1d3a2c';
+const F2 = '#3f7a64';
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '9px 12px', border: '1.5px solid #cfe0d8', borderRadius: 8,
+  fontSize: 14, fontFamily: 'inherit', color: F, background: '#f3f7f4', outline: 'none', boxSizing: 'border-box',
+};
+
+const STATUS_STYLES = {
+  overdue:   { bg: '#fbeae7', text: '#c0392b', label: 'Overdue' },
+  due_soon:  { bg: '#f8efd9', text: '#8a5a00', label: 'Due soon' },
+  scheduled: { bg: '#e8f0f6', text: '#2c6e9c', label: 'Scheduled' },
+  as_needed: { bg: '#f1eee8', text: '#5e5953', label: 'As needed' },
+};
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: F2, letterSpacing: '0.07em', textTransform: 'uppercase' }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function SectionCard({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e4e0d8', overflow: 'hidden', boxShadow: '0 2px 4px rgba(28,26,23,0.06)', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid #f1eee8' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: F }}>{title}</div>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function BtnPrimary({ onClick, children, disabled }: { onClick: () => void; children: React.ReactNode; disabled?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={disabled} style={{ background: disabled ? '#a3c4b6' : F, color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', fontSize: 12, fontWeight: 600, cursor: disabled ? 'default' : 'pointer', fontFamily: 'inherit' }}>
+      {children}
+    </button>
+  );
+}
+
+function BtnGhost({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick} style={{ background: '#fff', border: '1.5px solid #cfe0d8', borderRadius: 6, padding: '7px 14px', fontSize: 12, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>
+      {children}
+    </button>
+  );
+}
+
+function NotesSection({ assetId }: { assetId: string }) {
+  const { data: notes = [] } = useUpkeepNotes(assetId);
+  const createMut = useCreateNote();
+  const updateMut = useUpdateNote();
+  const deleteMut = useDeleteNote();
+  const [form, setForm] = useState<{ title: string; body: string } | null>(null);
+  const [editing, setEditing] = useState<UpkeepNote | null>(null);
+
+  function openNew() { setEditing(null); setForm({ title: '', body: '' }); }
+  function openEdit(n: UpkeepNote) { setEditing(n); setForm({ title: n.title, body: n.body ?? '' }); }
+  function cancel() { setForm(null); setEditing(null); }
+
+  async function save() {
+    if (!form?.title.trim()) return;
+    if (editing) await updateMut.mutateAsync({ id: editing.id, asset_id: assetId, title: form.title, body: form.body || null });
+    else await createMut.mutateAsync({ asset_id: assetId, title: form.title, body: form.body || null });
+    cancel();
+  }
+
+  return (
+    <SectionCard title={`Notes (${notes.length})`} action={!form ? <BtnGhost onClick={openNew}>+ Add Note</BtnGhost> : undefined}>
+      {form ? (
+        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Field label="Title"><input value={form.title} onChange={(e) => setForm((f) => f && { ...f, title: e.target.value })} placeholder="e.g. Refrigerator Repair" style={inputStyle} autoFocus /></Field>
+          <Field label="Note"><textarea rows={5} value={form.body} onChange={(e) => setForm((f) => f && { ...f, body: e.target.value })} placeholder="Details, findings, costs…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} /></Field>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <BtnPrimary onClick={save} disabled={createMut.isPending || updateMut.isPending}>{createMut.isPending || updateMut.isPending ? 'Saving…' : 'Save Note'}</BtnPrimary>
+            <BtnGhost onClick={cancel}>Cancel</BtnGhost>
+          </div>
+        </div>
+      ) : notes.length === 0 ? (
+        <div style={{ padding: '20px 18px', color: '#a39c92', fontSize: 13 }}>No notes yet.</div>
+      ) : (
+        notes.map((n, i) => (
+          <div key={n.id} style={{ padding: '14px 18px', borderBottom: i < notes.length - 1 ? '1px solid #f1eee8' : 'none' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: F, marginBottom: n.body ? 6 : 0 }}>{n.title}</div>
+                {n.body && <div style={{ fontSize: 13, color: '#5e5953', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{n.body}</div>}
+                <div style={{ fontSize: 11, color: '#a39c92', marginTop: 6 }}>{new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                <button onClick={() => openEdit(n)} style={{ background: '#f3f7f4', border: '1px solid #cfe0d8', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
+                <button onClick={() => deleteMut.mutate({ id: n.id, asset_id: assetId })} style={{ background: '#fbeae7', border: '1px solid #c0392b', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: '#c0392b', cursor: 'pointer', fontFamily: 'inherit' }}>×</button>
+              </div>
+            </div>
+          </div>
+        ))
+      )}
+    </SectionCard>
+  );
+}
+
+function MaintenanceSection({ assetId }: { assetId: string }) {
+  const { data: items = [] } = useUpkeepMaintenance(assetId);
+  const createMut = useCreateMaintenance();
+  const updateMut = useUpdateMaintenance();
+  const deleteMut = useDeleteMaintenance();
+  const [form, setForm] = useState<{ title: string; description: string; frequency: AssetFrequency; start_date: string } | null>(null);
+  const [editing, setEditing] = useState<UpkeepMaintenance | null>(null);
+
+  function openNew() { setEditing(null); setForm({ title: '', description: '', frequency: 'yearly', start_date: '' }); }
+  function openEdit(m: UpkeepMaintenance) { setEditing(m); setForm({ title: m.title, description: m.description ?? '', frequency: m.frequency, start_date: m.start_date ?? '' }); }
+  function cancel() { setForm(null); setEditing(null); }
+
+  async function save() {
+    if (!form?.title.trim()) return;
+    const payload = { asset_id: assetId, title: form.title, description: form.description || null, frequency: form.frequency, start_date: form.start_date || null };
+    if (editing) await updateMut.mutateAsync({ id: editing.id, ...payload });
+    else await createMut.mutateAsync(payload);
+    cancel();
+  }
+
+  return (
+    <SectionCard title={`Maintenance (${items.length})`} action={!form ? <BtnGhost onClick={openNew}>+ Add Item</BtnGhost> : undefined}>
+      {form ? (
+        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Field label="Task Name"><input value={form.title} onChange={(e) => setForm((f) => f && { ...f, title: e.target.value })} placeholder="e.g. Replace HVAC Filter" style={inputStyle} autoFocus /></Field>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Frequency">
+              <select value={form.frequency} onChange={(e) => setForm((f) => f && { ...f, frequency: e.target.value as AssetFrequency })} style={inputStyle}>
+                {(['monthly', 'quarterly', 'twice_yearly', 'yearly', 'as_needed'] as AssetFrequency[]).map((v) => (
+                  <option key={v} value={v}>{FREQ_LABELS[v]}</option>
+                ))}
+              </select>
+            </Field>
+            {form.frequency !== 'as_needed' && (
+              <Field label="Start Date"><input type="date" value={form.start_date} onChange={(e) => setForm((f) => f && { ...f, start_date: e.target.value })} style={inputStyle} /></Field>
+            )}
+          </div>
+          <Field label="Description"><textarea rows={2} value={form.description} onChange={(e) => setForm((f) => f && { ...f, description: e.target.value })} placeholder="Additional details…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} /></Field>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <BtnPrimary onClick={save} disabled={createMut.isPending || updateMut.isPending}>{createMut.isPending || updateMut.isPending ? 'Saving…' : 'Save Item'}</BtnPrimary>
+            <BtnGhost onClick={cancel}>Cancel</BtnGhost>
+          </div>
+        </div>
+      ) : items.length === 0 ? (
+        <div style={{ padding: '20px 18px', color: '#a39c92', fontSize: 13 }}>No maintenance items yet.</div>
+      ) : (
+        items.map((m, i) => {
+          const next = getNextDueDate(m);
+          const st = STATUS_STYLES[getMaintenanceStatus(m)];
+          return (
+            <div key={m.id} style={{ padding: '14px 18px', borderBottom: i < items.length - 1 ? '1px solid #f1eee8' : 'none', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: F }}>{m.title}</div>
+                  <span style={{ background: st.bg, color: st.text, borderRadius: 9999, padding: '2px 9px', fontSize: 11, fontWeight: 600 }}>{st.label}</span>
+                </div>
+                <div style={{ fontSize: 12, color: '#7d776f' }}>
+                  {FREQ_LABELS[m.frequency]}{next && ` · Next: ${next.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                </div>
+                {m.description && <div style={{ fontSize: 12, color: '#a39c92', marginTop: 4 }}>{m.description}</div>}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                <button onClick={() => openEdit(m)} style={{ background: '#f3f7f4', border: '1px solid #cfe0d8', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
+                <button onClick={() => deleteMut.mutate({ id: m.id, asset_id: assetId })} style={{ background: '#fbeae7', border: '1px solid #c0392b', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: '#c0392b', cursor: 'pointer', fontFamily: 'inherit' }}>×</button>
+              </div>
+            </div>
+          );
+        })
+      )}
+    </SectionCard>
+  );
+}
+
+function LinksSection({ assetId }: { assetId: string }) {
+  const { data: links = [] } = useUpkeepLinks(assetId);
+  const createMut = useCreateLink();
+  const updateMut = useUpdateLink();
+  const deleteMut = useDeleteLink();
+  const [form, setForm] = useState<{ name: string; url: string; description: string } | null>(null);
+  const [editing, setEditing] = useState<UpkeepLink | null>(null);
+
+  function openNew() { setEditing(null); setForm({ name: '', url: '', description: '' }); }
+  function openEdit(l: UpkeepLink) { setEditing(l); setForm({ name: l.name, url: l.url, description: l.description ?? '' }); }
+  function cancel() { setForm(null); setEditing(null); }
+
+  async function save() {
+    if (!form?.name.trim() || !form?.url.trim()) return;
+    const payload = { asset_id: assetId, name: form.name, url: form.url, description: form.description || null };
+    if (editing) await updateMut.mutateAsync({ id: editing.id, ...payload });
+    else await createMut.mutateAsync(payload);
+    cancel();
+  }
+
+  return (
+    <SectionCard title={`Links (${links.length})`} action={!form ? <BtnGhost onClick={openNew}>+ Add Link</BtnGhost> : undefined}>
+      {form ? (
+        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: 12 }}>
+            <Field label="Name"><input value={form.name} onChange={(e) => setForm((f) => f && { ...f, name: e.target.value })} placeholder="e.g. Replacement Filter" style={inputStyle} autoFocus /></Field>
+            <Field label="URL"><input value={form.url} onChange={(e) => setForm((f) => f && { ...f, url: e.target.value })} placeholder="https://…" style={inputStyle} /></Field>
+          </div>
+          <Field label="Description"><input value={form.description} onChange={(e) => setForm((f) => f && { ...f, description: e.target.value })} placeholder="Optional notes about this link…" style={inputStyle} /></Field>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <BtnPrimary onClick={save} disabled={createMut.isPending || updateMut.isPending}>{createMut.isPending || updateMut.isPending ? 'Saving…' : 'Save Link'}</BtnPrimary>
+            <BtnGhost onClick={cancel}>Cancel</BtnGhost>
+          </div>
+        </div>
+      ) : links.length === 0 ? (
+        <div style={{ padding: '20px 18px', color: '#a39c92', fontSize: 13 }}>No links yet.</div>
+      ) : (
+        links.map((l, i) => (
+          <div key={l.id} style={{ padding: '12px 18px', borderBottom: i < links.length - 1 ? '1px solid #f1eee8' : 'none', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <a href={l.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, fontWeight: 600, color: '#2c6e9c', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                {l.name}
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M5 2H2a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V7M8 1h3m0 0v3m0-3L5.5 6.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </a>
+              {l.description && <div style={{ fontSize: 12, color: '#7d776f', marginTop: 3 }}>{l.description}</div>}
+              <div style={{ fontSize: 11, color: '#a39c92', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.url}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button onClick={() => openEdit(l)} style={{ background: '#f3f7f4', border: '1px solid #cfe0d8', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
+              <button onClick={() => deleteMut.mutate({ id: l.id, asset_id: assetId })} style={{ background: '#fbeae7', border: '1px solid #c0392b', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: '#c0392b', cursor: 'pointer', fontFamily: 'inherit' }}>×</button>
+            </div>
+          </div>
+        ))
+      )}
+    </SectionCard>
+  );
+}
+
+export function AssetDetailPage() {
+  const { id = '' } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { data: asset, isLoading } = useUpkeepAsset(id);
+  const updateMut = useUpdateAsset();
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [infoForm, setInfoForm] = useState<Record<string, string>>({});
+
+  if (isLoading) return <div style={{ padding: 40, color: '#a39c92', fontFamily: "'Hanken Grotesk', system-ui, sans-serif" }}>Loading…</div>;
+  if (!asset) return <div style={{ padding: 40, color: '#a39c92', fontFamily: "'Hanken Grotesk', system-ui, sans-serif" }}>Asset not found.</div>;
+
+  const cs = CAT_STYLES[asset.category] ?? CAT_STYLES.general;
+
+  function startEdit() {
+    setInfoForm({
+      name: asset!.name, category: asset!.category,
+      model_number: asset!.model_number ?? '', serial_number: asset!.serial_number ?? '',
+      location: asset!.location ?? '', purchase_date: asset!.purchase_date ?? '',
+      purchase_price: asset!.purchase_price != null ? String(asset!.purchase_price) : '',
+      warranty_expiry: asset!.warranty_expiry ?? '', description: asset!.description ?? '',
+      status: asset!.status,
+    });
+    setEditingInfo(true);
+  }
+
+  async function saveInfo() {
+    await updateMut.mutateAsync({
+      id: asset!.id, name: infoForm.name, category: infoForm.category,
+      model_number: infoForm.model_number || null, serial_number: infoForm.serial_number || null,
+      location: infoForm.location || null, purchase_date: infoForm.purchase_date || null,
+      purchase_price: infoForm.purchase_price ? Number(infoForm.purchase_price) : null,
+      warranty_expiry: infoForm.warranty_expiry || null, description: infoForm.description || null,
+      status: infoForm.status as 'active' | 'inactive',
+    });
+    setEditingInfo(false);
+  }
+
+  return (
+    <div style={{ padding: '28px 32px', fontFamily: "'Hanken Grotesk', system-ui, sans-serif" }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#a39c92', marginBottom: 16 }}>
+        <span style={{ cursor: 'pointer', color: '#3f7a64' }} onClick={() => navigate('/assets')}>Assets</span>
+        <span>/</span>
+        <span style={{ color: '#45413b' }}>{asset.name}</span>
+      </div>
+
+      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e4e0d8', overflow: 'hidden', boxShadow: '0 2px 4px rgba(28,26,23,0.06)', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '20px 24px', borderBottom: editingInfo ? '1px solid #f1eee8' : 'none' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <span style={{ background: cs.bg, color: cs.text, borderRadius: 9999, padding: '3px 11px', fontSize: 12, fontWeight: 600 }}>{asset.category}</span>
+              <span style={{ background: asset.status === 'active' ? '#e6f2ea' : '#f1eee8', color: asset.status === 'active' ? '#2e7d52' : '#7d776f', borderRadius: 9999, padding: '3px 11px', fontSize: 12, fontWeight: 600 }}>{asset.status === 'active' ? 'Active' : 'Inactive'}</span>
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: F, letterSpacing: '-0.015em', marginBottom: 4 }}>{asset.name}</div>
+            {asset.location && <div style={{ fontSize: 13, color: '#7d776f' }}>{asset.location}</div>}
+          </div>
+          {!editingInfo && <button onClick={startEdit} style={{ background: '#f3f7f4', border: '1.5px solid #cfe0d8', borderRadius: 6, padding: '7px 16px', fontSize: 12, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>}
+        </div>
+
+        {editingInfo ? (
+          <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: 14 }}>
+              <Field label="Name *"><input value={infoForm.name} onChange={(e) => setInfoForm((f) => ({ ...f, name: e.target.value }))} style={inputStyle} /></Field>
+              <Field label="Category">
+                <select value={infoForm.category} onChange={(e) => setInfoForm((f) => ({ ...f, category: e.target.value }))} style={inputStyle}>
+                  {UPKEEP_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              </Field>
+              <Field label="Location"><input value={infoForm.location} onChange={(e) => setInfoForm((f) => ({ ...f, location: e.target.value }))} style={inputStyle} /></Field>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14 }}>
+              <Field label="Model #"><input value={infoForm.model_number} onChange={(e) => setInfoForm((f) => ({ ...f, model_number: e.target.value }))} style={inputStyle} /></Field>
+              <Field label="Serial #"><input value={infoForm.serial_number} onChange={(e) => setInfoForm((f) => ({ ...f, serial_number: e.target.value }))} style={inputStyle} /></Field>
+              <Field label="Purchase Date"><input type="date" value={infoForm.purchase_date} onChange={(e) => setInfoForm((f) => ({ ...f, purchase_date: e.target.value }))} style={inputStyle} /></Field>
+              <Field label="Warranty Expiry"><input type="date" value={infoForm.warranty_expiry} onChange={(e) => setInfoForm((f) => ({ ...f, warranty_expiry: e.target.value }))} style={inputStyle} /></Field>
+            </div>
+            <Field label="Description"><textarea rows={2} value={infoForm.description} onChange={(e) => setInfoForm((f) => ({ ...f, description: e.target.value }))} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} /></Field>
+            <Field label="Status">
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['active', 'inactive'].map((s) => (
+                  <button key={s} type="button" onClick={() => setInfoForm((f) => ({ ...f, status: s }))}
+                    style={{ padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', border: `1.5px solid ${infoForm.status === s ? F : '#cfe0d8'}`, background: infoForm.status === s ? '#e7efe9' : '#fff', color: infoForm.status === s ? F : '#7d776f' }}>
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={saveInfo} disabled={!infoForm.name?.trim() || updateMut.isPending}
+                style={{ background: !infoForm.name?.trim() || updateMut.isPending ? '#a3c4b6' : F, color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                {updateMut.isPending ? 'Saving…' : 'Save Changes'}
+              </button>
+              <BtnGhost onClick={() => setEditingInfo(false)}>Cancel</BtnGhost>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', borderTop: '1px solid #f1eee8' }}>
+            {[
+              { label: 'Model', value: asset.model_number },
+              { label: 'Serial', value: asset.serial_number },
+              { label: 'Purchased', value: asset.purchase_date ? new Date(asset.purchase_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null },
+              { label: 'Purchase Price', value: asset.purchase_price != null ? `$${asset.purchase_price.toLocaleString()}` : null },
+              { label: 'Warranty Expires', value: asset.warranty_expiry ? new Date(asset.warranty_expiry + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null },
+            ].filter((r) => r.value).map((r) => (
+              <div key={r.label} style={{ padding: '12px 20px', borderRight: '1px solid #f1eee8' }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a39c92', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>{r.label}</div>
+                <div style={{ fontSize: 13, color: '#45413b', fontWeight: 500 }}>{r.value}</div>
+              </div>
+            ))}
+            {asset.description && (
+              <div style={{ padding: '12px 20px', gridColumn: '1 / -1' }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a39c92', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Description</div>
+                <div style={{ fontSize: 13, color: '#5e5953', lineHeight: 1.6 }}>{asset.description}</div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <MaintenanceSection assetId={id} />
+      <NotesSection assetId={id} />
+      <LinksSection assetId={id} />
+    </div>
+  );
+}
