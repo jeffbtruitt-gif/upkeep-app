@@ -8,9 +8,13 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 });
 
+// GitHub Pages serves the app from /upkeep-app/ (see vite.config.ts base),
+// so the router needs the same basename to match.
+const basename = import.meta.env.BASE_URL.replace(/\/$/, '');
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <QueryClientProvider client={queryClient}>
         <App />
       </QueryClientProvider>
