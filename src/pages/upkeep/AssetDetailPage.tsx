@@ -10,6 +10,8 @@ import {
   type UpkeepNote, type UpkeepMaintenance, type UpkeepLink, type AssetFrequency,
 } from '@/api/upkeep';
 import { MaintenanceDetailModal, FrequencyPill } from './MaintenanceDetailModal';
+import { useAssetPhotos, useUploadPhotos } from '@/api/photos';
+import { AddPhotosButton, PhotoGrid, PendingPhotos } from './Photos';
 
 const F = '#1d3a2c';
 const F2 = '#3f7a64';
@@ -68,19 +70,34 @@ function NotesSection({ assetId }: { assetId: string }) {
   const createMut = useCreateNote();
   const updateMut = useUpdateNote();
   const deleteMut = useDeleteNote();
+  const { data: photos = [] } = useAssetPhotos(assetId);
+  const uploadMut = useUploadPhotos();
   const [form, setForm] = useState<{ title: string; body: string } | null>(null);
   const [editing, setEditing] = useState<UpkeepNote | null>(null);
+  const [pending, setPending] = useState<File[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const photosFor = (noteId: string) => photos.filter((p) => p.note_id === noteId);
 
-  function openNew() { setEditing(null); setForm({ title: '', body: '' }); }
-  function openEdit(n: UpkeepNote) { setEditing(n); setForm({ title: n.title, body: n.body ?? '' }); }
-  function cancel() { setForm(null); setEditing(null); }
+  function openNew() { setEditing(null); setPending([]); setUploadError(null); setForm({ title: '', body: '' }); }
+  function openEdit(n: UpkeepNote) { setEditing(n); setPending([]); setUploadError(null); setForm({ title: n.title, body: n.body ?? '' }); }
+  function cancel() { setForm(null); setEditing(null); setPending([]); }
 
   async function save() {
     if (!form?.title.trim()) return;
-    if (editing) await updateMut.mutateAsync({ id: editing.id, asset_id: assetId, title: form.title, body: form.body || null });
-    else await createMut.mutateAsync({ asset_id: assetId, title: form.title, body: form.body || null });
+    const note = editing
+      ? await updateMut.mutateAsync({ id: editing.id, asset_id: assetId, title: form.title, body: form.body || null })
+      : await createMut.mutateAsync({ asset_id: assetId, title: form.title, body: form.body || null });
+    if (pending.length) {
+      try {
+        await uploadMut.mutateAsync({ asset_id: assetId, note_id: note.id, files: pending });
+      } catch (e: any) {
+        // Keep the form open so the photos can be retried; the note text is already saved.
+        setEditing(note); setUploadError(e?.message ?? 'Photo upload failed'); return;
+      }
+    }
     cancel();
   }
+  const saving = createMut.isPending || updateMut.isPending || uploadMut.isPending;
 
   return (
     <SectionCard title={`Notes (${notes.length})`} action={!form ? <BtnGhost onClick={openNew}>+ Add Note</BtnGhost> : undefined}>
@@ -88,8 +105,16 @@ function NotesSection({ assetId }: { assetId: string }) {
         <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Field label="Title"><input value={form.title} onChange={(e) => setForm((f) => f && { ...f, title: e.target.value })} placeholder="e.g. Refrigerator Repair" style={inputStyle} autoFocus /></Field>
           <Field label="Note"><textarea rows={5} value={form.body} onChange={(e) => setForm((f) => f && { ...f, body: e.target.value })} placeholder="Details, findings, costs…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} /></Field>
+          <Field label="Photos">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {editing && <PhotoGrid photos={photosFor(editing.id)} size={80} />}
+              <PendingPhotos files={pending} onRemove={(i) => setPending((p) => p.filter((_, j) => j !== i))} />
+              <div><AddPhotosButton label="+ Add Photos" onFiles={(f) => setPending((p) => [...p, ...f])} /></div>
+              {uploadError && <div style={{ fontSize: 12, color: '#c0392b' }}>Note saved, but photos didn't upload: {uploadError}. Tap Save again to retry.</div>}
+            </div>
+          </Field>
           <div style={{ display: 'flex', gap: 8 }}>
-            <BtnPrimary onClick={save} disabled={createMut.isPending || updateMut.isPending}>{createMut.isPending || updateMut.isPending ? 'Saving…' : 'Save Note'}</BtnPrimary>
+            <BtnPrimary onClick={save} disabled={saving}>{uploadMut.isPending ? 'Uploading photos…' : saving ? 'Saving…' : 'Save Note'}</BtnPrimary>
             <BtnGhost onClick={cancel}>Cancel</BtnGhost>
           </div>
         </div>
@@ -102,16 +127,34 @@ function NotesSection({ assetId }: { assetId: string }) {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: F, marginBottom: n.body ? 6 : 0 }}>{n.title}</div>
                 {n.body && <div style={{ fontSize: 13, color: '#5e5953', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{n.body}</div>}
+                {photosFor(n.id).length > 0 && <div style={{ marginTop: 10 }}><PhotoGrid photos={photosFor(n.id)} size={76} /></div>}
                 <div style={{ fontSize: 11, color: '#a39c92', marginTop: 6 }}>{new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
               </div>
               <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                 <button onClick={() => openEdit(n)} style={{ background: '#f3f7f4', border: '1px solid #cfe0d8', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
-                <button onClick={() => deleteMut.mutate({ id: n.id, asset_id: assetId })} style={{ background: '#fbeae7', border: '1px solid #c0392b', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: '#c0392b', cursor: 'pointer', fontFamily: 'inherit' }}>×</button>
+                <button onClick={() => { if (confirm(`Delete note "${n.title}"${photosFor(n.id).length ? ' and its photos' : ''}?`)) deleteMut.mutate({ id: n.id, asset_id: assetId }); }} style={{ background: '#fbeae7', border: '1px solid #c0392b', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: '#c0392b', cursor: 'pointer', fontFamily: 'inherit' }}>×</button>
               </div>
             </div>
           </div>
         ))
       )}
+    </SectionCard>
+  );
+}
+
+function ItemPhotosSection({ assetId }: { assetId: string }) {
+  const { data: photos = [], isLoading } = useAssetPhotos(assetId);
+  const uploadMut = useUploadPhotos();
+  const itemPhotos = photos.filter((p) => !p.note_id);
+  return (
+    <SectionCard title={`Photos (${itemPhotos.length})`}
+      action={<AddPhotosButton busy={uploadMut.isPending} onFiles={(files) => uploadMut.mutate({ asset_id: assetId, files })} />}>
+      <div style={{ padding: '14px 18px' }}>
+        {uploadMut.isError && <div style={{ fontSize: 12, color: '#c0392b', marginBottom: 8 }}>Upload failed: {(uploadMut.error as any)?.message ?? 'unknown error'}</div>}
+        {isLoading ? <div style={{ color: '#a39c92', fontSize: 13 }}>Loading…</div>
+          : itemPhotos.length === 0 ? <div style={{ color: '#a39c92', fontSize: 13 }}>No photos yet. Add the label, model sticker, or how it's installed.</div>
+          : <PhotoGrid photos={itemPhotos} size={110} />}
+      </div>
     </SectionCard>
   );
 }
@@ -384,6 +427,7 @@ export function AssetDetailPage() {
         )}
       </div>
 
+      <ItemPhotosSection assetId={id} />
       <MaintenanceSection assetId={id} assetName={asset.name} />
       <NotesSection assetId={id} />
       <LinksSection assetId={id} />

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/api/supabase';
 import { useHousehold } from '@/api/household';
+import { removePhotoFiles } from '@/api/photos';
 
 const db = supabase as any;
 
@@ -129,6 +130,7 @@ export function useDeleteAsset() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
+      await removePhotoFiles({ asset_id: id });
       const { error } = await db.from('upkeep_assets').delete().eq('id', id);
       if (error) throw error;
     },
@@ -178,11 +180,15 @@ export function useDeleteNote() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, asset_id }: { id: string; asset_id: string }) => {
+      await removePhotoFiles({ note_id: id });
       const { error } = await db.from('upkeep_notes').delete().eq('id', id);
       if (error) throw error;
       return asset_id;
     },
-    onSuccess: (assetId) => qc.invalidateQueries({ queryKey: upkeepKeys.notes(assetId) }),
+    onSuccess: (assetId) => {
+      qc.invalidateQueries({ queryKey: upkeepKeys.notes(assetId) });
+      qc.invalidateQueries({ queryKey: ['upkeep', 'photos', assetId] });
+    },
   });
 }
 
