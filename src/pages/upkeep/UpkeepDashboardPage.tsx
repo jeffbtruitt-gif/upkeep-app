@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MaintenanceDetailModal } from './MaintenanceDetailModal';
+import { useIsMobile, pagePad } from '@/lib/useIsMobile';
 import {
   useUpkeepAssets,
   useAllUpkeepMaintenance,
@@ -26,6 +27,7 @@ function fmt(d: Date) {
 
 export function UpkeepDashboardPage() {
   const navigate = useNavigate();
+  const mobile = useIsMobile();
   const { data: assets = [], isLoading: assetsLoading } = useUpkeepAssets();
   const { data: allMaint = [], isLoading: maintLoading } = useAllUpkeepMaintenance();
   const [viewingId, setViewingId] = useState<string | null>(null);
@@ -54,10 +56,10 @@ export function UpkeepDashboardPage() {
   const isLoading = assetsLoading || maintLoading;
 
   return (
-    <div style={{ padding: '28px 32px', fontFamily: "'Hanken Grotesk', system-ui, sans-serif" }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
+    <div style={{ padding: pagePad(mobile), fontFamily: "'Hanken Grotesk', system-ui, sans-serif" }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: mobile ? 16 : 24 }}>
         <div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: F, letterSpacing: '-0.015em' }}>Dashboard</div>
+          <div style={{ fontSize: mobile ? 23 : 26, fontWeight: 700, color: F, letterSpacing: '-0.015em' }}>Dashboard</div>
           <div style={{ fontSize: 14, color: '#7d776f', marginTop: 3 }}>
             {overdue.length > 0
               ? `${overdue.length} task${overdue.length > 1 ? 's are' : ' is'} overdue${dueSoon.length > 0 ? ` · ${dueSoon.length} due soon` : ''}.`
@@ -68,14 +70,14 @@ export function UpkeepDashboardPage() {
         </div>
         <button
           onClick={() => navigate('/assets')}
-          style={{ background: F, color: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 2px 4px rgba(28,26,23,0.08)' }}
+          style={{ background: F, color: '#fff', border: 'none', borderRadius: 6, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 2px 4px rgba(28,26,23,0.08)', whiteSpace: 'nowrap', flexShrink: 0 }}
         >
           + Add Asset
         </button>
       </div>
 
       {/* KPI tiles */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: mobile ? 10 : 14, marginBottom: mobile ? 16 : 24 }}>
         {[
           { label: 'Assets Tracked', value: isLoading ? '—' : String(activeAssets.length), sub: 'active items', strip: '#3f7a64' },
           { label: 'Due This Month', value: isLoading ? '—' : String(dueSoon.length), sub: 'next 30 days', strip: '#b8821f' },
@@ -105,13 +107,22 @@ export function UpkeepDashboardPage() {
           <div style={{ padding: 24, color: '#a39c92', fontSize: 13 }}>No scheduled maintenance items yet. Add assets and maintenance tasks to get started.</div>
         ) : (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr 100px 120px', padding: '8px 18px', background: '#f8f6f2', borderBottom: '1px solid #e4e0d8' }}>
+            {!mobile && <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr 100px 120px', padding: '8px 18px', background: '#f8f6f2', borderBottom: '1px solid #e4e0d8' }}>
               {['Task', 'Asset', 'Due', 'Status'].map((h) => (
                 <div key={h} style={{ fontSize: 10, fontWeight: 700, color: '#a39c92', letterSpacing: '0.09em', textTransform: 'uppercase' }}>{h}</div>
               ))}
-            </div>
+            </div>}
             {upcoming.map((m, i) => {
               const st = STATUS_STYLES[m.status];
+              if (mobile) return (
+                <div key={m.id} onClick={() => setViewingId(m.id)} style={{ padding: '12px 14px', borderBottom: i < upcoming.length - 1 ? '1px solid #f1eee8' : 'none', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: F, lineHeight: 1.3 }}>{m.title}</div>
+                    <span style={{ background: st.bg, color: st.text, borderRadius: 9999, padding: '3px 10px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>{st.label}</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#7d776f', marginTop: 4 }}>{m.assetName} · Due {m.nextDate ? fmt(m.nextDate) : '—'}</div>
+                </div>
+              );
               return (
                 <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr 100px 120px', padding: '10px 18px', borderBottom: i < upcoming.length - 1 ? '1px solid #f1eee8' : 'none', alignItems: 'center', cursor: 'pointer' }} onClick={() => setViewingId(m.id)}>
                   <div>
@@ -132,12 +143,12 @@ export function UpkeepDashboardPage() {
       {!isLoading && activeAssets.length > 0 && (
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#7d776f', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Asset Spotlight</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(220px, 1fr))', gap: mobile ? 10 : 14 }}>
             {activeAssets.slice(0, 6).map((a) => {
               const cs = CAT_STYLES[a.category] ?? CAT_STYLES.general;
               return (
                 <div key={a.id} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e4e0d8', overflow: 'hidden', boxShadow: '0 2px 4px rgba(28,26,23,0.06)', cursor: 'pointer' }} onClick={() => navigate(`/assets/${a.id}`)}>
-                  <div style={{ height: 80, background: 'repeating-linear-gradient(45deg,#f1eee8,#f1eee8 8px,#f8f6f2 8px,#f8f6f2 16px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ height: mobile ? 56 : 80, background: 'repeating-linear-gradient(45deg,#f1eee8,#f1eee8 8px,#f8f6f2 8px,#f8f6f2 16px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 10, color: '#a39c92', letterSpacing: '0.04em' }}>asset photo</span>
                   </div>
                   <div style={{ padding: '12px 14px' }}>

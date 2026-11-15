@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAllUpkeepMaintenance, getNextDueDate, getMaintenanceStatus, fmtDate, byFrequency } from '@/api/upkeep';
 import { MaintenanceDetailModal, FrequencyPill } from './MaintenanceDetailModal';
+import { useIsMobile, pagePad } from '@/lib/useIsMobile';
 
 const F = '#1d3a2c';
 
@@ -16,6 +17,7 @@ const COLS = '2fr 1.2fr 130px 115px 115px 105px';
 
 export function MaintenancePage() {
   const navigate = useNavigate();
+  const mobile = useIsMobile();
   const { data: allMaint = [], isLoading } = useAllUpkeepMaintenance();
   const [viewingId, setViewingId] = useState<string | null>(null);
   const viewing = allMaint.find((m) => m.id === viewingId) ?? null;
@@ -32,8 +34,8 @@ export function MaintenancePage() {
   ].filter((g) => g.items.length > 0);
 
   return (
-    <div style={{ padding: '28px 32px', fontFamily: "'Hanken Grotesk', system-ui, sans-serif" }}>
-      <div style={{ fontSize: 26, fontWeight: 700, color: F, letterSpacing: '-0.015em', marginBottom: 6 }}>Maintenance Schedule</div>
+    <div style={{ padding: pagePad(mobile), fontFamily: "'Hanken Grotesk', system-ui, sans-serif" }}>
+      <div style={{ fontSize: mobile ? 23 : 26, fontWeight: 700, color: F, letterSpacing: '-0.015em', marginBottom: 6 }}>Maintenance Schedule</div>
       <div style={{ fontSize: 14, color: '#7d776f', marginBottom: 24 }}>All scheduled tasks across active assets.</div>
 
       {isLoading ? (
@@ -50,13 +52,27 @@ export function MaintenancePage() {
               <span style={{ background: STATUS_STYLES[g.key as keyof typeof STATUS_STYLES].bg, color: STATUS_STYLES[g.key as keyof typeof STATUS_STYLES].text, borderRadius: 9999, padding: '2px 9px', fontSize: 11, fontWeight: 700 }}>{g.items.length}</span>
             </div>
             <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e4e0d8', overflow: 'hidden', boxShadow: '0 2px 4px rgba(28,26,23,0.06)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: COLS, padding: '8px 18px', background: '#f8f6f2', borderBottom: '1px solid #e4e0d8' }}>
+              {!mobile && <div style={{ display: 'grid', gridTemplateColumns: COLS, padding: '8px 18px', background: '#f8f6f2', borderBottom: '1px solid #e4e0d8' }}>
                 {['Task', 'Asset', 'Frequency', 'Last Done', 'Next Due', 'Status'].map((h) => (
                   <div key={h} style={{ fontSize: 10, fontWeight: 700, color: '#a39c92', letterSpacing: '0.09em', textTransform: 'uppercase' }}>{h}</div>
                 ))}
-              </div>
+              </div>}
               {g.items.map((m, i) => {
                 const st = STATUS_STYLES[m.status];
+                if (mobile) return (
+                  <div key={m.id} onClick={() => setViewingId(m.id)} style={{ padding: '13px 14px', borderBottom: i < g.items.length - 1 ? '1px solid #f1eee8' : 'none', cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: F, lineHeight: 1.3 }}>{m.title}</div>
+                      <span style={{ background: st.bg, color: st.text, borderRadius: 9999, padding: '3px 10px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>{st.label}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: '#7d776f', marginTop: 4 }}>{m.assetName}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px 12px', flexWrap: 'wrap', marginTop: 7, fontSize: 13, color: '#5e5953' }}>
+                      <FrequencyPill frequency={m.frequency} />
+                      <span style={{ whiteSpace: 'nowrap' }}>Last: {m.last_performed ? fmtDate(m.last_performed) : 'Never'}</span>
+                      {m.nextDate && <span style={{ whiteSpace: 'nowrap' }}>Next: {fmtDate(m.nextDate)}</span>}
+                    </div>
+                  </div>
+                );
                 return (
                   <div key={m.id}
                     style={{ display: 'grid', gridTemplateColumns: COLS, padding: '11px 18px', borderBottom: i < g.items.length - 1 ? '1px solid #f1eee8' : 'none', alignItems: 'center', cursor: 'pointer' }}

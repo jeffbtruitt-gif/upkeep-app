@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  useUpkeepAsset, useUpdateAsset,
+  useUpkeepAsset, useUpdateAsset, useDeleteAsset,
   useUpkeepNotes, useCreateNote, useUpdateNote, useDeleteNote,
   useUpkeepMaintenance, useCreateMaintenance, useUpdateMaintenance, useDeleteMaintenance,
   useServiceLog, useSaveLogEntry, useDeleteLogEntry, type UpkeepLogEntry,
@@ -13,6 +13,7 @@ import {
 import { MaintenanceDetailModal, FrequencyPill } from './MaintenanceDetailModal';
 import { useAssetPhotos, useUploadPhotos } from '@/api/photos';
 import { AddPhotosButton, PhotoGrid, PendingPhotos } from './Photos';
+import { useIsMobile, pagePad } from '@/lib/useIsMobile';
 
 const F = '#1d3a2c';
 const F2 = '#3f7a64';
@@ -67,6 +68,7 @@ function BtnGhost({ onClick, children }: { onClick: () => void; children: React.
 }
 
 function NotesSection({ assetId }: { assetId: string }) {
+  const mobile = useIsMobile();
   const { data: notes = [] } = useUpkeepNotes(assetId);
   const createMut = useCreateNote();
   const updateMut = useUpdateNote();
@@ -126,8 +128,8 @@ function NotesSection({ assetId }: { assetId: string }) {
           <div key={n.id} style={{ padding: '14px 18px', borderBottom: i < notes.length - 1 ? '1px solid #f1eee8' : 'none' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: F, marginBottom: n.body ? 6 : 0 }}>{n.title}</div>
-                {n.body && <div style={{ fontSize: 13, color: '#5e5953', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{n.body}</div>}
+                <div style={{ fontSize: mobile ? 15 : 13, fontWeight: 600, color: F, marginBottom: n.body ? 6 : 0 }}>{n.title}</div>
+                {n.body && <div style={{ fontSize: mobile ? 14.5 : 13, color: '#5e5953', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{n.body}</div>}
                 {photosFor(n.id).length > 0 && <div style={{ marginTop: 10 }}><PhotoGrid photos={photosFor(n.id)} size={76} /></div>}
                 <div style={{ fontSize: 11, color: '#a39c92', marginTop: 6 }}>{new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
               </div>
@@ -161,6 +163,7 @@ function ItemPhotosSection({ assetId }: { assetId: string }) {
 }
 
 function MaintenanceSection({ assetId, assetName }: { assetId: string; assetName: string }) {
+  const mobile = useIsMobile();
   const { data: rawItems = [] } = useUpkeepMaintenance(assetId);
   const items = [...rawItems].sort(byFrequency);
   const createMut = useCreateMaintenance();
@@ -228,11 +231,11 @@ function MaintenanceSection({ assetId, assetName }: { assetId: string; assetName
               style={{ padding: '14px 18px', borderBottom: i < items.length - 1 ? '1px solid #f1eee8' : 'none', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, cursor: 'pointer' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: F }}>{m.title}</div>
+                  <div style={{ fontSize: mobile ? 15 : 13, fontWeight: 600, color: F }}>{m.title}</div>
                   <FrequencyPill frequency={m.frequency} />
                   <span style={{ background: st.bg, color: st.text, borderRadius: 9999, padding: '2px 9px', fontSize: 11, fontWeight: 600 }}>{st.label}</span>
                 </div>
-                <div style={{ fontSize: 12, color: '#7d776f' }}>
+                <div style={{ fontSize: mobile ? 13 : 12, color: '#7d776f' }}>
                   Last done: {m.last_performed ? fmtDate(m.last_performed) : 'Never'}
                   {next && ` · Next: ${fmtDate(next)}`}
                 </div>
@@ -254,6 +257,7 @@ function MaintenanceSection({ assetId, assetName }: { assetId: string; assetName
 }
 
 function ServiceLogSection({ assetId, isVehicle }: { assetId: string; isVehicle: boolean }) {
+  const mobile = useIsMobile();
   const { data: entries = [] } = useServiceLog(assetId);
   const { data: photos = [] } = useAssetPhotos(assetId);
   const saveMut = useSaveLogEntry();
@@ -343,7 +347,7 @@ function ServiceLogSection({ assetId, isVehicle }: { assetId: string; isVehicle:
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: F }}>{l.title}</div>
+                    <div style={{ fontSize: mobile ? 15 : 14, fontWeight: 600, color: F }}>{l.title}</div>
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                       <button onClick={() => openEdit(l)} style={{ background: '#f3f7f4', border: '1px solid #cfe0d8', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
                       <button onClick={() => { if (confirm(`Delete log entry "${l.title}"${photosFor(l.id).length ? ' and its photos' : ''}?`)) deleteMut.mutate({ id: l.id, asset_id: assetId }); }} style={{ background: '#fbeae7', border: '1px solid #c0392b', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: '#c0392b', cursor: 'pointer', fontFamily: 'inherit' }}>×</button>
@@ -368,6 +372,7 @@ function ServiceLogSection({ assetId, isVehicle }: { assetId: string; isVehicle:
 }
 
 function LinksSection({ assetId }: { assetId: string }) {
+  const mobile = useIsMobile();
   const { data: links = [] } = useUpkeepLinks(assetId);
   const createMut = useCreateLink();
   const updateMut = useUpdateLink();
@@ -391,7 +396,7 @@ function LinksSection({ assetId }: { assetId: string }) {
     <SectionCard title={`Links (${links.length})`} action={!form ? <BtnGhost onClick={openNew}>+ Add Link</BtnGhost> : undefined}>
       {form ? (
         <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
             <Field label="Name"><input value={form.name} onChange={(e) => setForm((f) => f && { ...f, name: e.target.value })} placeholder="e.g. Replacement Filter" style={inputStyle} autoFocus /></Field>
             <Field label="URL"><input value={form.url} onChange={(e) => setForm((f) => f && { ...f, url: e.target.value })} placeholder="https://…" style={inputStyle} /></Field>
           </div>
@@ -407,7 +412,7 @@ function LinksSection({ assetId }: { assetId: string }) {
         links.map((l, i) => (
           <div key={l.id} style={{ padding: '12px 18px', borderBottom: i < links.length - 1 ? '1px solid #f1eee8' : 'none', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <a href={l.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, fontWeight: 600, color: '#2c6e9c', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <a href={l.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: mobile ? 15 : 13, fontWeight: 600, color: '#2c6e9c', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                 {l.name}
                 <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M5 2H2a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V7M8 1h3m0 0v3m0-3L5.5 6.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </a>
@@ -430,6 +435,8 @@ export function AssetDetailPage() {
   const navigate = useNavigate();
   const { data: asset, isLoading } = useUpkeepAsset(id);
   const updateMut = useUpdateAsset();
+  const deleteAssetMut = useDeleteAsset();
+  const mobile = useIsMobile();
   const [editingInfo, setEditingInfo] = useState(false);
   const [infoForm, setInfoForm] = useState<Record<string, string>>({});
 
@@ -463,7 +470,7 @@ export function AssetDetailPage() {
   }
 
   return (
-    <div style={{ padding: '28px 32px', fontFamily: "'Hanken Grotesk', system-ui, sans-serif" }}>
+    <div style={{ padding: pagePad(mobile), fontFamily: "'Hanken Grotesk', system-ui, sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#a39c92', marginBottom: 16 }}>
         <span style={{ cursor: 'pointer', color: '#3f7a64' }} onClick={() => navigate('/assets')}>Assets</span>
         <span>/</span>
@@ -471,21 +478,21 @@ export function AssetDetailPage() {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e4e0d8', overflow: 'hidden', boxShadow: '0 2px 4px rgba(28,26,23,0.06)', marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '20px 24px', borderBottom: editingInfo ? '1px solid #f1eee8' : 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, padding: mobile ? '16px 14px' : '20px 24px', borderBottom: editingInfo ? '1px solid #f1eee8' : 'none' }}>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
               <span style={{ background: cs.bg, color: cs.text, borderRadius: 9999, padding: '3px 11px', fontSize: 12, fontWeight: 600 }}>{asset.category}</span>
               <span style={{ background: asset.status === 'active' ? '#e6f2ea' : '#f1eee8', color: asset.status === 'active' ? '#2e7d52' : '#7d776f', borderRadius: 9999, padding: '3px 11px', fontSize: 12, fontWeight: 600 }}>{asset.status === 'active' ? 'Active' : 'Inactive'}</span>
             </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: F, letterSpacing: '-0.015em', marginBottom: 4 }}>{asset.name}</div>
+            <div style={{ fontSize: mobile ? 21 : 24, fontWeight: 700, color: F, letterSpacing: '-0.015em', marginBottom: 4 }}>{asset.name}</div>
             {asset.location && <div style={{ fontSize: 13, color: '#7d776f' }}>{asset.location}</div>}
           </div>
           {!editingInfo && <button onClick={startEdit} style={{ background: '#f3f7f4', border: '1.5px solid #cfe0d8', borderRadius: 6, padding: '7px 16px', fontSize: 12, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>}
         </div>
 
         {editingInfo ? (
-          <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: 14 }}>
+          <div style={{ padding: mobile ? '14px' : '16px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14 }}>
               <Field label="Name *"><input value={infoForm.name} onChange={(e) => setInfoForm((f) => ({ ...f, name: e.target.value }))} style={inputStyle} /></Field>
               <Field label="Category">
                 <select value={infoForm.category} onChange={(e) => setInfoForm((f) => ({ ...f, category: e.target.value }))} style={inputStyle}>
@@ -494,13 +501,13 @@ export function AssetDetailPage() {
               </Field>
               <Field label="Location"><input value={infoForm.location} onChange={(e) => setInfoForm((f) => ({ ...f, location: e.target.value }))} style={inputStyle} /></Field>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
               <Field label="Model #"><input value={infoForm.model_number} onChange={(e) => setInfoForm((f) => ({ ...f, model_number: e.target.value }))} style={inputStyle} /></Field>
               <Field label="Serial #"><input value={infoForm.serial_number} onChange={(e) => setInfoForm((f) => ({ ...f, serial_number: e.target.value }))} style={inputStyle} /></Field>
               <Field label="Purchase Date"><input type="date" value={infoForm.purchase_date} onChange={(e) => setInfoForm((f) => ({ ...f, purchase_date: e.target.value }))} style={inputStyle} /></Field>
               <Field label="Warranty Expiry"><input type="date" value={infoForm.warranty_expiry} onChange={(e) => setInfoForm((f) => ({ ...f, warranty_expiry: e.target.value }))} style={inputStyle} /></Field>
             </div>
-            <Field label="Description"><textarea rows={2} value={infoForm.description} onChange={(e) => setInfoForm((f) => ({ ...f, description: e.target.value }))} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} /></Field>
+            <Field label="Description"><textarea rows={5} value={infoForm.description} onChange={(e) => setInfoForm((f) => ({ ...f, description: e.target.value }))} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} /></Field>
             <Field label="Status">
               <div style={{ display: 'flex', gap: 8 }}>
                 {['active', 'inactive'].map((s) => (
@@ -517,10 +524,17 @@ export function AssetDetailPage() {
                 {updateMut.isPending ? 'Saving…' : 'Save Changes'}
               </button>
               <BtnGhost onClick={() => setEditingInfo(false)}>Cancel</BtnGhost>
+              <button onClick={async () => {
+                  if (!confirm(`Permanently delete "${asset.name}" and all its maintenance, log entries, notes, links and photos?`)) return;
+                  await deleteAssetMut.mutateAsync(asset.id); navigate('/assets');
+                }}
+                style={{ marginLeft: 'auto', background: '#fff', border: '1.5px solid #c0392b', borderRadius: 6, padding: '7px 14px', fontSize: 12, fontWeight: 600, color: '#c0392b', cursor: 'pointer', fontFamily: 'inherit' }}>
+                {deleteAssetMut.isPending ? 'Deleting…' : 'Delete item'}
+              </button>
             </div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', borderTop: '1px solid #f1eee8' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(160px, 1fr))', borderTop: '1px solid #f1eee8' }}>
             {[
               { label: 'Model', value: asset.model_number },
               { label: 'Serial', value: asset.serial_number },
@@ -528,13 +542,13 @@ export function AssetDetailPage() {
               { label: 'Purchase Price', value: asset.purchase_price != null ? `$${asset.purchase_price.toLocaleString()}` : null },
               { label: 'Warranty Expires', value: asset.warranty_expiry ? new Date(asset.warranty_expiry + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null },
             ].filter((r) => r.value).map((r) => (
-              <div key={r.label} style={{ padding: '12px 20px', borderRight: '1px solid #f1eee8' }}>
+              <div key={r.label} style={{ padding: mobile ? '10px 14px' : '12px 20px', borderRight: '1px solid #f1eee8', borderTop: mobile ? '1px solid #f1eee8' : undefined, minWidth: 0, overflowWrap: 'anywhere' }}>
                 <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a39c92', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>{r.label}</div>
                 <div style={{ fontSize: 13, color: '#45413b', fontWeight: 500 }}>{r.value}</div>
               </div>
             ))}
             {asset.description && (
-              <div style={{ padding: '12px 20px', gridColumn: '1 / -1' }}>
+              <div style={{ padding: mobile ? '12px 14px' : '12px 20px', gridColumn: '1 / -1', borderTop: mobile ? '1px solid #f1eee8' : undefined }}>
                 <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a39c92', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Description</div>
                 <div style={{ fontSize: 14, color: '#5e5953', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{asset.description}</div>
               </div>

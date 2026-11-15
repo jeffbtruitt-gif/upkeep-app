@@ -24,7 +24,7 @@ export function LoginPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#efece4', fontFamily: "'Hanken Grotesk', system-ui, sans-serif" }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#efece4', fontFamily: "'Hanken Grotesk', system-ui, sans-serif", padding: 16 }}>
       <div style={{ width: '100%', maxWidth: 380, background: '#fff', borderRadius: 14, border: '1px solid #e4e0d8', boxShadow: '0 8px 24px rgba(28,26,23,0.10)', overflow: 'hidden' }}>
         <div style={{ padding: '28px 28px 20px', borderBottom: '1px solid #e4e0d8', display: 'flex', alignItems: 'center', gap: 12 }}>
           <svg width="32" height="32" viewBox="0 0 48 48" fill="none">
@@ -43,6 +43,8 @@ export function LoginPage() {
             <div style={{ fontSize: 11, fontWeight: 700, color: '#3f7a64', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }}>Email</div>
             <input
               type="email"
+              autoComplete="username"
+              autoCapitalize="none"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -53,6 +55,7 @@ export function LoginPage() {
             <div style={{ fontSize: 11, fontWeight: 700, color: '#3f7a64', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }}>Password</div>
             <input
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

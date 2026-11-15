@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/api/auth';
+import { useIsMobile } from '@/lib/useIsMobile';
 
 const F = '#1d3a2c';
 const F2 = '#2a5141';
@@ -46,6 +47,46 @@ const NAV_ITEMS: NavItem[] = [
 export function UpkeepShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { signOut } = useAuth();
+  const mobile = useIsMobile();
+
+  if (mobile) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#efece4', fontFamily: "'Hanken Grotesk', system-ui, sans-serif" }}>
+        {/* Top bar */}
+        <div style={{ position: 'sticky', top: 0, zIndex: 50, background: '#fff', borderBottom: '1px solid #e4e0d8', paddingTop: 'env(safe-area-inset-top)' }}>
+          <div style={{ height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }} onClick={() => navigate('/')}>
+              <svg width="26" height="26" viewBox="0 0 48 48" fill="none">
+                <path d="M7 23L24 9l17 14" stroke={F} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M11 21v16a2 2 0 0 0 2 2h22a2 2 0 0 0 2-2V21" stroke={F} strokeWidth="3" strokeLinejoin="round" />
+                <rect x="20.5" y="28" width="7" height="11" rx="1.5" fill={CLAY} />
+              </svg>
+              <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em', color: F }}>Upkeep</div>
+            </div>
+            <button onClick={signOut} style={{ background: 'none', border: 'none', color: '#7d776f', fontSize: 14, fontWeight: 500, fontFamily: 'inherit', cursor: 'pointer', padding: '6px 4px' }}>Sign out</button>
+          </div>
+        </div>
+
+        {/* Content (room for the tab bar) */}
+        <div style={{ paddingBottom: 'calc(72px + env(safe-area-inset-bottom))' }}>{children}</div>
+
+        {/* Bottom tab bar */}
+        <nav style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 50, background: '#fff', borderTop: '1px solid #e4e0d8', display: 'flex', paddingBottom: 'env(safe-area-inset-bottom)', boxShadow: '0 -2px 8px rgba(28,26,23,0.05)' }}>
+          {NAV_ITEMS.map((item) => (
+            <NavLink key={item.to} to={item.to} end={item.to === '/'}
+              style={({ isActive }) => ({
+                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+                height: 60, fontSize: 11.5, fontWeight: isActive ? 700 : 500, textDecoration: 'none',
+                color: isActive ? F : '#8a847b', borderTop: `3px solid ${isActive ? F2 : 'transparent'}`,
+              })}>
+              <span style={{ transform: 'scale(1.35)', display: 'flex' }}>{item.icon}</span>
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#efece4', display: 'flex', fontFamily: "'Hanken Grotesk', system-ui, sans-serif" }}>
