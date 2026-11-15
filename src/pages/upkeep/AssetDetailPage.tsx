@@ -4,9 +4,10 @@ import {
   useUpkeepAsset, useUpdateAsset,
   useUpkeepNotes, useCreateNote, useUpdateNote, useDeleteNote,
   useUpkeepMaintenance, useCreateMaintenance, useUpdateMaintenance, useDeleteMaintenance,
+  useServiceLog, useSaveLogEntry, useDeleteLogEntry, type UpkeepLogEntry,
   useUpkeepLinks, useCreateLink, useUpdateLink, useDeleteLink,
   CAT_STYLES, UPKEEP_CATEGORIES, FREQ_LABELS,
-  getNextDueDate, getMaintenanceStatus, fmtDate, byFrequency,
+  getNextDueDate, getMaintenanceStatus, fmtDate, byFrequency, parseDateOnly, todayISO,
   type UpkeepNote, type UpkeepMaintenance, type UpkeepLink, type AssetFrequency,
 } from '@/api/upkeep';
 import { MaintenanceDetailModal, FrequencyPill } from './MaintenanceDetailModal';
@@ -145,7 +146,7 @@ function NotesSection({ assetId }: { assetId: string }) {
 function ItemPhotosSection({ assetId }: { assetId: string }) {
   const { data: photos = [], isLoading } = useAssetPhotos(assetId);
   const uploadMut = useUploadPhotos();
-  const itemPhotos = photos.filter((p) => !p.note_id);
+  const itemPhotos = photos.filter((p) => !p.note_id && !p.log_id);
   return (
     <SectionCard title={`Photos (${itemPhotos.length})`}
       action={<AddPhotosButton busy={uploadMut.isPending} onFiles={(files) => uploadMut.mutate({ asset_id: assetId, files })} />}>
@@ -247,6 +248,120 @@ function MaintenanceSection({ assetId, assetName }: { assetId: string; assetName
       )}
       {viewing && (
         <MaintenanceDetailModal item={viewing} assetName={assetName} onClose={() => setViewingId(null)} onEdit={() => openEdit(viewing)} />
+      )}
+    </SectionCard>
+  );
+}
+
+function ServiceLogSection({ assetId, isVehicle }: { assetId: string; isVehicle: boolean }) {
+  const { data: entries = [] } = useServiceLog(assetId);
+  const { data: photos = [] } = useAssetPhotos(assetId);
+  const saveMut = useSaveLogEntry();
+  const deleteMut = useDeleteLogEntry();
+  const uploadMut = useUploadPhotos();
+  type LogForm = { service_date: string; title: string; provider: string; mileage: string; cost: string; invoice_number: string; description: string };
+  const [form, setForm] = useState<LogForm | null>(null);
+  const [editing, setEditing] = useState<UpkeepLogEntry | null>(null);
+  const [pending, setPending] = useState<File[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const photosFor = (logId: string) => photos.filter((p) => p.log_id === logId);
+  const set = (k: keyof LogForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm((f) => f && { ...f, [k]: e.target.value });
+
+  function openNew() {
+    setEditing(null); setPending([]); setUploadError(null);
+    setForm({ service_date: todayISO(), title: '', provider: '', mileage: '', cost: '', invoice_number: '', description: '' });
+  }
+  function openEdit(l: UpkeepLogEntry) {
+    setEditing(l); setPending([]); setUploadError(null);
+    setForm({ service_date: l.service_date, title: l.title, provider: l.provider ?? '', mileage: l.mileage != null ? String(l.mileage) : '',
+      cost: l.cost != null ? String(l.cost) : '', invoice_number: l.invoice_number ?? '', description: l.description ?? '' });
+  }
+  function cancel() { setForm(null); setEditing(null); setPending([]); }
+
+  async function save() {
+    if (!form?.title.trim() || !form.service_date) return;
+    const entry = await saveMut.mutateAsync({
+      id: editing?.id, asset_id: assetId, service_date: form.service_date, title: form.title.trim(),
+      provider: form.provider.trim() || null, invoice_number: form.invoice_number.trim() || null, description: form.description || null,
+      mileage: form.mileage ? Math.round(Number(form.mileage.replace(/[^0-9.]/g, ''))) : null,
+      cost: form.cost ? Number(form.cost.replace(/[^0-9.]/g, '')) : null,
+    });
+    if (pending.length) {
+      try { await uploadMut.mutateAsync({ asset_id: assetId, log_id: entry.id, files: pending }); }
+      catch (e: any) { setEditing(entry); setUploadError(e?.message ?? 'Photo upload failed'); return; }
+    }
+    cancel();
+  }
+  const saving = saveMut.isPending || uploadMut.isPending;
+  const totalCost = entries.reduce((s, e) => s + (e.cost ?? 0), 0);
+
+  return (
+    <SectionCard title={`Maintenance Log (${entries.length})`} action={!form ? <BtnGhost onClick={openNew}>+ Add Entry</BtnGhost> : undefined}>
+      {form ? (
+        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+            <Field label="Date *"><input type="date" value={form.service_date} onChange={set('service_date')} style={inputStyle} /></Field>
+            <Field label="What was done *"><input value={form.title} onChange={set('title')} placeholder="e.g. Oil change" style={inputStyle} autoFocus /></Field>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
+            <Field label="Done by"><input value={form.provider} onChange={set('provider')} placeholder="Shop, company or DIY" style={inputStyle} /></Field>
+            {(isVehicle || form.mileage) && <Field label="Mileage"><input inputMode="numeric" value={form.mileage} onChange={set('mileage')} placeholder="e.g. 12,500" style={inputStyle} /></Field>}
+            <Field label="Cost"><input inputMode="decimal" value={form.cost} onChange={set('cost')} placeholder="$0.00" style={inputStyle} /></Field>
+            <Field label="Invoice #"><input value={form.invoice_number} onChange={set('invoice_number')} style={inputStyle} /></Field>
+          </div>
+          <Field label="Details"><textarea rows={5} value={form.description} onChange={set('description')} placeholder="Parts, findings, recommendations…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} /></Field>
+          <Field label="Photos / receipts">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {editing && <PhotoGrid photos={photosFor(editing.id)} size={80} />}
+              <PendingPhotos files={pending} onRemove={(i) => setPending((p) => p.filter((_, j) => j !== i))} />
+              <div><AddPhotosButton label="+ Add Photos" onFiles={(f) => setPending((p) => [...p, ...f])} /></div>
+              {uploadError && <div style={{ fontSize: 12, color: '#c0392b' }}>Entry saved, but photos didn't upload: {uploadError}. Tap Save again to retry.</div>}
+            </div>
+          </Field>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <BtnPrimary onClick={save} disabled={saving || !form.title.trim() || !form.service_date}>{uploadMut.isPending ? 'Uploading photos…' : saving ? 'Saving…' : 'Save Entry'}</BtnPrimary>
+            <BtnGhost onClick={cancel}>Cancel</BtnGhost>
+          </div>
+        </div>
+      ) : entries.length === 0 ? (
+        <div style={{ padding: '20px 18px', color: '#a39c92', fontSize: 13 }}>No service history yet. Log repairs, service visits and work you've done.</div>
+      ) : (
+        <>
+          {entries.map((l, i) => {
+            const meta = [
+              l.provider,
+              l.mileage != null ? `${l.mileage.toLocaleString()} mi` : null,
+              l.cost != null ? `$${l.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null,
+              l.invoice_number ? `Invoice ${l.invoice_number}` : null,
+            ].filter(Boolean).join(' · ');
+            return (
+              <div key={l.id} style={{ padding: '14px 18px', borderBottom: i < entries.length - 1 ? '1px solid #f1eee8' : 'none', display: 'flex', gap: 14 }}>
+                <div style={{ width: 54, flexShrink: 0, textAlign: 'center', background: '#f3f7f4', border: '1px solid #cfe0d8', borderRadius: 8, padding: '6px 0', alignSelf: 'flex-start' }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: F2, textTransform: 'uppercase' }}>{parseDateOnly(l.service_date).toLocaleDateString('en-US', { month: 'short' })}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: F, lineHeight: 1.1 }}>{parseDateOnly(l.service_date).getDate()}</div>
+                  <div style={{ fontSize: 10.5, color: '#7d776f' }}>{parseDateOnly(l.service_date).getFullYear()}</div>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: F }}>{l.title}</div>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button onClick={() => openEdit(l)} style={{ background: '#f3f7f4', border: '1px solid #cfe0d8', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
+                      <button onClick={() => { if (confirm(`Delete log entry "${l.title}"${photosFor(l.id).length ? ' and its photos' : ''}?`)) deleteMut.mutate({ id: l.id, asset_id: assetId }); }} style={{ background: '#fbeae7', border: '1px solid #c0392b', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: '#c0392b', cursor: 'pointer', fontFamily: 'inherit' }}>×</button>
+                    </div>
+                  </div>
+                  {meta && <div style={{ fontSize: 12.5, color: '#7d776f', marginTop: 3 }}>{meta}</div>}
+                  {l.description && <div style={{ fontSize: 14, color: '#5e5953', marginTop: 6, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{l.description}</div>}
+                  {photosFor(l.id).length > 0 && <div style={{ marginTop: 10 }}><PhotoGrid photos={photosFor(l.id)} size={76} /></div>}
+                </div>
+              </div>
+            );
+          })}
+          {totalCost > 0 && (
+            <div style={{ padding: '10px 18px', borderTop: '1px solid #f1eee8', background: '#f8f6f2', fontSize: 12.5, color: '#7d776f', textAlign: 'right' }}>
+              Total logged cost: <strong style={{ color: F }}>${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            </div>
+          )}
+        </>
       )}
     </SectionCard>
   );
@@ -430,6 +545,7 @@ export function AssetDetailPage() {
 
       <ItemPhotosSection assetId={id} />
       <MaintenanceSection assetId={id} assetName={asset.name} />
+      <ServiceLogSection assetId={id} isVehicle={asset.category === 'vehicles'} />
       <NotesSection assetId={id} />
       <LinksSection assetId={id} />
     </div>

@@ -9,6 +9,7 @@ export interface UpkeepPhoto {
   id: string;
   asset_id: string;
   note_id: string | null;
+  log_id: string | null;
   storage_path: string;
   caption: string | null;
   created_at: string;
@@ -63,14 +64,14 @@ export function useUploadPhotos() {
   const hh = useHousehold();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ asset_id, note_id = null, files }: { asset_id: string; note_id?: string | null; files: File[] }) => {
+    mutationFn: async ({ asset_id, note_id = null, log_id = null, files }: { asset_id: string; note_id?: string | null; log_id?: string | null; files: File[] }) => {
       if (!hh?.id) throw new Error('Household not loaded yet');
       for (const file of files) {
         const { blob, ext, type } = await compressImage(file);
         const path = `${hh.id}/${asset_id}/${crypto.randomUUID()}.${ext}`;
         const { error: upErr } = await supabase.storage.from(PHOTO_BUCKET).upload(path, blob, { contentType: type });
         if (upErr) throw upErr;
-        const { error } = await db.from('upkeep_photos').insert({ asset_id, note_id, storage_path: path });
+        const { error } = await db.from('upkeep_photos').insert({ asset_id, note_id, log_id, storage_path: path });
         if (error) {
           await supabase.storage.from(PHOTO_BUCKET).remove([path]);
           throw error;
@@ -96,7 +97,7 @@ export function useDeletePhoto() {
 }
 
 /** Remove the stored files for an asset or a note before its rows cascade-delete. */
-export async function removePhotoFiles(filter: { asset_id: string } | { note_id: string }) {
+export async function removePhotoFiles(filter: { asset_id: string } | { note_id: string } | { log_id: string }) {
   const [col, val] = Object.entries(filter)[0];
   const { data } = await db.from('upkeep_photos').select('storage_path').eq(col, val);
   const paths = ((data ?? []) as { storage_path: string }[]).map((r) => r.storage_path);

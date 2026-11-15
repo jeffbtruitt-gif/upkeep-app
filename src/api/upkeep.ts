@@ -268,6 +268,70 @@ export function useDeleteMaintenance() {
   });
 }
 
+// ── Maintenance log (work actually done) ──────────────────────────────────
+
+export interface UpkeepLogEntry {
+  id: string;
+  asset_id: string;
+  service_date: string;
+  title: string;
+  description: string | null;
+  provider: string | null;
+  mileage: number | null;
+  cost: number | null;
+  invoice_number: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type LogInput = Pick<UpkeepLogEntry, 'asset_id' | 'service_date' | 'title' | 'description' | 'provider' | 'mileage' | 'cost' | 'invoice_number'>;
+
+const logKey = (assetId: string) => ['upkeep', 'service-log', assetId] as const;
+
+export function useServiceLog(assetId: string) {
+  return useQuery({
+    queryKey: logKey(assetId),
+    enabled: !!assetId,
+    queryFn: async () => {
+      const { data, error } = await db.from('upkeep_service_log').select('*').eq('asset_id', assetId)
+        .order('service_date', { ascending: false }).order('created_at', { ascending: false });
+      if (error) throw error;
+      return data as UpkeepLogEntry[];
+    },
+  });
+}
+
+export function useSaveLogEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...input }: LogInput & { id?: string }) => {
+      const q = id
+        ? db.from('upkeep_service_log').update({ ...input, updated_at: new Date().toISOString() }).eq('id', id)
+        : db.from('upkeep_service_log').insert(input);
+      const { data, error } = await q.select().single();
+      if (error) throw error;
+      return data as UpkeepLogEntry;
+    },
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: logKey(vars.asset_id) }),
+  });
+}
+
+export function useDeleteLogEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, asset_id }: { id: string; asset_id: string }) => {
+      await removePhotoFiles({ log_id: id });
+      const { error } = await db.from('upkeep_service_log').delete().eq('id', id);
+      if (error) throw error;
+      return asset_id;
+    },
+    onSuccess: (assetId) => {
+      qc.invalidateQueries({ queryKey: logKey(assetId) });
+      qc.invalidateQueries({ queryKey: ['upkeep', 'photos', assetId] });
+    },
+  });
+}
+
 // ── Links ──────────────────────────────────────────────────────────────────
 
 export function useUpkeepLinks(assetId: string) {
