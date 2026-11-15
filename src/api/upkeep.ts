@@ -42,6 +42,7 @@ export interface UpkeepMaintenance {
   description: string | null;
   frequency: AssetFrequency;
   start_date: string | null;
+  last_performed: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -219,12 +220,15 @@ export function useAllUpkeepMaintenance() {
 export function useCreateMaintenance() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: Pick<UpkeepMaintenance, 'asset_id' | 'title' | 'description' | 'frequency' | 'start_date'>) => {
+    mutationFn: async (input: Pick<UpkeepMaintenance, 'asset_id' | 'title' | 'description' | 'frequency' | 'start_date' | 'last_performed'>) => {
       const { data, error } = await db.from('upkeep_maintenance').insert(input).select().single();
       if (error) throw error;
       return data as UpkeepMaintenance;
     },
-    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: upkeepKeys.maintenance(vars.asset_id) }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: upkeepKeys.maintenance(vars.asset_id) });
+      qc.invalidateQueries({ queryKey: ['upkeep', 'all-maintenance'] });
+    },
   });
 }
 
@@ -236,7 +240,10 @@ export function useUpdateMaintenance() {
       if (error) throw error;
       return data as UpkeepMaintenance;
     },
-    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: upkeepKeys.maintenance(vars.asset_id) }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: upkeepKeys.maintenance(vars.asset_id) });
+      qc.invalidateQueries({ queryKey: ['upkeep', 'all-maintenance'] });
+    },
   });
 }
 
@@ -248,7 +255,10 @@ export function useDeleteMaintenance() {
       if (error) throw error;
       return asset_id;
     },
-    onSuccess: (assetId) => qc.invalidateQueries({ queryKey: upkeepKeys.maintenance(assetId) }),
+    onSuccess: (assetId) => {
+      qc.invalidateQueries({ queryKey: upkeepKeys.maintenance(assetId) });
+      qc.invalidateQueries({ queryKey: ['upkeep', 'all-maintenance'] });
+    },
   });
 }
 
@@ -308,11 +318,35 @@ const FREQ_MONTHS: Record<Exclude<AssetFrequency, 'as_needed'>, number> = {
   monthly: 1, quarterly: 3, twice_yearly: 6, yearly: 12,
 };
 
+/** Parse a YYYY-MM-DD date as local noon so it never shifts a day across time zones. */
+export function parseDateOnly(s: string): Date {
+  return new Date(s.length === 10 ? `${s}T12:00:00` : s);
+}
+
+export function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export function fmtDate(d: Date | string | null | undefined): string {
+  if (!d) return '—';
+  const date = typeof d === 'string' ? parseDateOnly(d) : d;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export function getNextDueDate(item: UpkeepMaintenance): Date | null {
-  if (item.frequency === 'as_needed' || !item.start_date) return null;
+  if (item.frequency === 'as_needed') return null;
   const months = FREQ_MONTHS[item.frequency];
+  // If the task has been done, the next due date is one interval after that — it can be in the past (overdue).
+  if (item.last_performed) {
+    const last = parseDateOnly(item.last_performed);
+    const d = new Date(last.getFullYear(), last.getMonth() + months, last.getDate());
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  if (!item.start_date) return null;
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  let d = new Date(item.start_date);
+  let d = parseDateOnly(item.start_date); d.setHours(0, 0, 0, 0);
   while (d <= today) d = new Date(d.getFullYear(), d.getMonth() + months, d.getDate());
   return d;
 }

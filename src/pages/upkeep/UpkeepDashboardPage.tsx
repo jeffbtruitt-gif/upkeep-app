@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { MaintenanceDetailModal } from './MaintenanceDetailModal';
 import {
   useUpkeepAssets,
   useAllUpkeepMaintenance,
@@ -26,6 +28,8 @@ export function UpkeepDashboardPage() {
   const navigate = useNavigate();
   const { data: assets = [], isLoading: assetsLoading } = useUpkeepAssets();
   const { data: allMaint = [], isLoading: maintLoading } = useAllUpkeepMaintenance();
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const viewing = allMaint.find((m) => m.id === viewingId) ?? null;
 
   const activeAssets = assets.filter((a) => a.status === 'active');
 
@@ -109,7 +113,7 @@ export function UpkeepDashboardPage() {
             {upcoming.map((m, i) => {
               const st = STATUS_STYLES[m.status];
               return (
-                <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr 100px 120px', padding: '10px 18px', borderBottom: i < upcoming.length - 1 ? '1px solid #f1eee8' : 'none', alignItems: 'center', cursor: 'pointer' }} onClick={() => navigate(`/assets/${m.asset_id}`)}>
+                <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr 100px 120px', padding: '10px 18px', borderBottom: i < upcoming.length - 1 ? '1px solid #f1eee8' : 'none', alignItems: 'center', cursor: 'pointer' }} onClick={() => setViewingId(m.id)}>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: F }}>{m.title}</div>
                     <div style={{ fontSize: 11, color: '#a39c92' }}>{FREQ_LABELS[m.frequency]}</div>
@@ -146,6 +150,14 @@ export function UpkeepDashboardPage() {
             })}
           </div>
         </div>
+      )}
+      {viewing && (
+        <MaintenanceDetailModal
+          item={viewing}
+          assetName={viewing.upkeep_assets?.name}
+          onClose={() => setViewingId(null)}
+          onOpenAsset={() => navigate(`/assets/${viewing.asset_id}`)}
+        />
       )}
     </div>
   );

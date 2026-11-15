@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAllUpkeepMaintenance, getNextDueDate, getMaintenanceStatus, FREQ_LABELS } from '@/api/upkeep';
+import { useAllUpkeepMaintenance, getNextDueDate, getMaintenanceStatus, fmtDate } from '@/api/upkeep';
+import { MaintenanceDetailModal, FrequencyPill } from './MaintenanceDetailModal';
 
 const F = '#1d3a2c';
 
@@ -10,13 +12,13 @@ const STATUS_STYLES = {
   as_needed: { bg: '#f1eee8', text: '#5e5953', label: 'As needed' },
 };
 
-function fmt(d: Date) {
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+const COLS = '2fr 1.2fr 130px 115px 115px 105px';
 
 export function MaintenancePage() {
   const navigate = useNavigate();
   const { data: allMaint = [], isLoading } = useAllUpkeepMaintenance();
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const viewing = allMaint.find((m) => m.id === viewingId) ?? null;
 
   const withStatus = allMaint.map((m) => ({
     ...m, nextDate: getNextDueDate(m), status: getMaintenanceStatus(m), assetName: m.upkeep_assets?.name ?? '',
@@ -48,8 +50,8 @@ export function MaintenancePage() {
               <span style={{ background: STATUS_STYLES[g.key as keyof typeof STATUS_STYLES].bg, color: STATUS_STYLES[g.key as keyof typeof STATUS_STYLES].text, borderRadius: 9999, padding: '2px 9px', fontSize: 11, fontWeight: 700 }}>{g.items.length}</span>
             </div>
             <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e4e0d8', overflow: 'hidden', boxShadow: '0 2px 4px rgba(28,26,23,0.06)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr 110px 120px 120px', padding: '8px 18px', background: '#f8f6f2', borderBottom: '1px solid #e4e0d8' }}>
-                {['Task', 'Asset', 'Frequency', 'Next Due', 'Status'].map((h) => (
+              <div style={{ display: 'grid', gridTemplateColumns: COLS, padding: '8px 18px', background: '#f8f6f2', borderBottom: '1px solid #e4e0d8' }}>
+                {['Task', 'Asset', 'Frequency', 'Last Done', 'Next Due', 'Status'].map((h) => (
                   <div key={h} style={{ fontSize: 10, fontWeight: 700, color: '#a39c92', letterSpacing: '0.09em', textTransform: 'uppercase' }}>{h}</div>
                 ))}
               </div>
@@ -57,17 +59,18 @@ export function MaintenancePage() {
                 const st = STATUS_STYLES[m.status];
                 return (
                   <div key={m.id}
-                    style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr 110px 120px 120px', padding: '11px 18px', borderBottom: i < g.items.length - 1 ? '1px solid #f1eee8' : 'none', alignItems: 'center', cursor: 'pointer' }}
+                    style={{ display: 'grid', gridTemplateColumns: COLS, padding: '11px 18px', borderBottom: i < g.items.length - 1 ? '1px solid #f1eee8' : 'none', alignItems: 'center', cursor: 'pointer' }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f7f4')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = '')}
-                    onClick={() => navigate(`/assets/${m.asset_id}`)}>
-                    <div>
+                    onClick={() => setViewingId(m.id)}>
+                    <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: F }}>{m.title}</div>
-                      {m.description && <div style={{ fontSize: 11, color: '#a39c92', marginTop: 2 }}>{m.description}</div>}
+                      {m.description && <div style={{ fontSize: 13.5, color: '#5e5953', marginTop: 4, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{m.description}</div>}
                     </div>
                     <span style={{ fontSize: 12.5, color: '#7d776f', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.assetName}</span>
-                    <span style={{ fontSize: 12, color: '#7d776f' }}>{FREQ_LABELS[m.frequency]}</span>
-                    <span style={{ fontSize: 12.5, color: '#45413b', fontWeight: 500 }}>{m.nextDate ? fmt(m.nextDate) : '—'}</span>
+                    <div><FrequencyPill frequency={m.frequency} /></div>
+                    <span style={{ fontSize: 12.5, color: '#7d776f' }}>{m.last_performed ? fmtDate(m.last_performed) : 'Never'}</span>
+                    <span style={{ fontSize: 12.5, color: '#45413b', fontWeight: 500 }}>{m.nextDate ? fmtDate(m.nextDate) : '—'}</span>
                     <div><span style={{ background: st.bg, color: st.text, borderRadius: 9999, padding: '3px 10px', fontSize: 11, fontWeight: 600 }}>{st.label}</span></div>
                   </div>
                 );
@@ -75,6 +78,14 @@ export function MaintenancePage() {
             </div>
           </div>
         ))
+      )}
+      {viewing && (
+        <MaintenanceDetailModal
+          item={viewing}
+          assetName={viewing.upkeep_assets?.name}
+          onClose={() => setViewingId(null)}
+          onOpenAsset={() => navigate(`/assets/${viewing.asset_id}`)}
+        />
       )}
     </div>
   );

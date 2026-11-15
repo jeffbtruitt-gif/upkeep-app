@@ -6,9 +6,10 @@ import {
   useUpkeepMaintenance, useCreateMaintenance, useUpdateMaintenance, useDeleteMaintenance,
   useUpkeepLinks, useCreateLink, useUpdateLink, useDeleteLink,
   CAT_STYLES, UPKEEP_CATEGORIES, FREQ_LABELS,
-  getNextDueDate, getMaintenanceStatus,
+  getNextDueDate, getMaintenanceStatus, fmtDate,
   type UpkeepNote, type UpkeepMaintenance, type UpkeepLink, type AssetFrequency,
 } from '@/api/upkeep';
+import { MaintenanceDetailModal, FrequencyPill } from './MaintenanceDetailModal';
 
 const F = '#1d3a2c';
 const F2 = '#3f7a64';
@@ -115,21 +116,27 @@ function NotesSection({ assetId }: { assetId: string }) {
   );
 }
 
-function MaintenanceSection({ assetId }: { assetId: string }) {
+function MaintenanceSection({ assetId, assetName }: { assetId: string; assetName: string }) {
   const { data: items = [] } = useUpkeepMaintenance(assetId);
   const createMut = useCreateMaintenance();
   const updateMut = useUpdateMaintenance();
   const deleteMut = useDeleteMaintenance();
-  const [form, setForm] = useState<{ title: string; description: string; frequency: AssetFrequency; start_date: string } | null>(null);
+  const [form, setForm] = useState<{ title: string; description: string; frequency: AssetFrequency; start_date: string; last_performed: string } | null>(null);
   const [editing, setEditing] = useState<UpkeepMaintenance | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const viewing = items.find((m) => m.id === viewingId) ?? null;
 
-  function openNew() { setEditing(null); setForm({ title: '', description: '', frequency: 'yearly', start_date: '' }); }
-  function openEdit(m: UpkeepMaintenance) { setEditing(m); setForm({ title: m.title, description: m.description ?? '', frequency: m.frequency, start_date: m.start_date ?? '' }); }
+  function openNew() { setEditing(null); setForm({ title: '', description: '', frequency: 'yearly', start_date: '', last_performed: '' }); }
+  function openEdit(m: UpkeepMaintenance) { setViewingId(null); setEditing(m); setForm({ title: m.title, description: m.description ?? '', frequency: m.frequency, start_date: m.start_date ?? '', last_performed: m.last_performed ?? '' }); }
   function cancel() { setForm(null); setEditing(null); }
 
   async function save() {
     if (!form?.title.trim()) return;
-    const payload = { asset_id: assetId, title: form.title, description: form.description || null, frequency: form.frequency, start_date: form.start_date || null };
+    const payload = {
+      asset_id: assetId, title: form.title, description: form.description || null, frequency: form.frequency,
+      start_date: form.frequency === 'as_needed' ? null : form.start_date || null,
+      last_performed: form.last_performed || null,
+    };
     if (editing) await updateMut.mutateAsync({ id: editing.id, ...payload });
     else await createMut.mutateAsync(payload);
     cancel();
@@ -140,7 +147,7 @@ function MaintenanceSection({ assetId }: { assetId: string }) {
       {form ? (
         <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Field label="Task Name"><input value={form.title} onChange={(e) => setForm((f) => f && { ...f, title: e.target.value })} placeholder="e.g. Replace HVAC Filter" style={inputStyle} autoFocus /></Field>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
             <Field label="Frequency">
               <select value={form.frequency} onChange={(e) => setForm((f) => f && { ...f, frequency: e.target.value as AssetFrequency })} style={inputStyle}>
                 {(['monthly', 'quarterly', 'twice_yearly', 'yearly', 'as_needed'] as AssetFrequency[]).map((v) => (
@@ -148,11 +155,15 @@ function MaintenanceSection({ assetId }: { assetId: string }) {
                 ))}
               </select>
             </Field>
+            <Field label="Last Performed"><input type="date" value={form.last_performed} onChange={(e) => setForm((f) => f && { ...f, last_performed: e.target.value })} style={inputStyle} /></Field>
             {form.frequency !== 'as_needed' && (
               <Field label="Start Date"><input type="date" value={form.start_date} onChange={(e) => setForm((f) => f && { ...f, start_date: e.target.value })} style={inputStyle} /></Field>
             )}
           </div>
-          <Field label="Description"><textarea rows={2} value={form.description} onChange={(e) => setForm((f) => f && { ...f, description: e.target.value })} placeholder="Additional details…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} /></Field>
+          {form.frequency !== 'as_needed' && (
+            <div style={{ fontSize: 11.5, color: '#a39c92', marginTop: -4 }}>Next due is calculated from Last Performed; Start Date is only used until the task has been done once.</div>
+          )}
+          <Field label="Description"><textarea rows={5} value={form.description} onChange={(e) => setForm((f) => f && { ...f, description: e.target.value })} placeholder="Additional details…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} /></Field>
           <div style={{ display: 'flex', gap: 8 }}>
             <BtnPrimary onClick={save} disabled={createMut.isPending || updateMut.isPending}>{createMut.isPending || updateMut.isPending ? 'Saving…' : 'Save Item'}</BtnPrimary>
             <BtnGhost onClick={cancel}>Cancel</BtnGhost>
@@ -165,24 +176,33 @@ function MaintenanceSection({ assetId }: { assetId: string }) {
           const next = getNextDueDate(m);
           const st = STATUS_STYLES[getMaintenanceStatus(m)];
           return (
-            <div key={m.id} style={{ padding: '14px 18px', borderBottom: i < items.length - 1 ? '1px solid #f1eee8' : 'none', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <div key={m.id}
+              onClick={() => setViewingId(m.id)}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f7f4')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = '')}
+              style={{ padding: '14px 18px', borderBottom: i < items.length - 1 ? '1px solid #f1eee8' : 'none', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, cursor: 'pointer' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: F }}>{m.title}</div>
+                  <FrequencyPill frequency={m.frequency} />
                   <span style={{ background: st.bg, color: st.text, borderRadius: 9999, padding: '2px 9px', fontSize: 11, fontWeight: 600 }}>{st.label}</span>
                 </div>
                 <div style={{ fontSize: 12, color: '#7d776f' }}>
-                  {FREQ_LABELS[m.frequency]}{next && ` · Next: ${next.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                  Last done: {m.last_performed ? fmtDate(m.last_performed) : 'Never'}
+                  {next && ` · Next: ${fmtDate(next)}`}
                 </div>
-                {m.description && <div style={{ fontSize: 12, color: '#a39c92', marginTop: 4 }}>{m.description}</div>}
+                {m.description && <div style={{ fontSize: 14, color: '#5e5953', marginTop: 6, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{m.description}</div>}
               </div>
-              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                 <button onClick={() => openEdit(m)} style={{ background: '#f3f7f4', border: '1px solid #cfe0d8', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
-                <button onClick={() => deleteMut.mutate({ id: m.id, asset_id: assetId })} style={{ background: '#fbeae7', border: '1px solid #c0392b', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: '#c0392b', cursor: 'pointer', fontFamily: 'inherit' }}>×</button>
+                <button onClick={() => { if (confirm(`Delete "${m.title}"?`)) deleteMut.mutate({ id: m.id, asset_id: assetId }); }} style={{ background: '#fbeae7', border: '1px solid #c0392b', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: '#c0392b', cursor: 'pointer', fontFamily: 'inherit' }}>×</button>
               </div>
             </div>
           );
         })
+      )}
+      {viewing && (
+        <MaintenanceDetailModal item={viewing} assetName={assetName} onClose={() => setViewingId(null)} onEdit={() => openEdit(viewing)} />
       )}
     </SectionCard>
   );
@@ -357,14 +377,14 @@ export function AssetDetailPage() {
             {asset.description && (
               <div style={{ padding: '12px 20px', gridColumn: '1 / -1' }}>
                 <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a39c92', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Description</div>
-                <div style={{ fontSize: 13, color: '#5e5953', lineHeight: 1.6 }}>{asset.description}</div>
+                <div style={{ fontSize: 14, color: '#5e5953', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{asset.description}</div>
               </div>
             )}
           </div>
         )}
       </div>
 
-      <MaintenanceSection assetId={id} />
+      <MaintenanceSection assetId={id} assetName={asset.name} />
       <NotesSection assetId={id} />
       <LinksSection assetId={id} />
     </div>
