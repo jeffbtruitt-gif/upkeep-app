@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAllUpkeepMaintenance, getNextDueDate, getMaintenanceStatus, fmtDate } from '@/api/upkeep';
+import { useAllUpkeepMaintenance, getNextDueDate, getMaintenanceStatus, fmtDate, byFrequency } from '@/api/upkeep';
 import { MaintenanceDetailModal, FrequencyPill } from './MaintenanceDetailModal';
 
 const F = '#1d3a2c';
@@ -25,10 +25,10 @@ export function MaintenancePage() {
   }));
 
   const groups = [
-    { key: 'overdue',   label: 'Overdue',  items: withStatus.filter((m) => m.status === 'overdue') },
-    { key: 'due_soon',  label: 'Due Soon', items: withStatus.filter((m) => m.status === 'due_soon') },
+    { key: 'overdue',   label: 'Overdue',  items: withStatus.filter((m) => m.status === 'overdue').sort(byFrequency) },
+    { key: 'due_soon',  label: 'Due Soon', items: withStatus.filter((m) => m.status === 'due_soon').sort(byFrequency) },
     { key: 'scheduled', label: 'Upcoming', items: withStatus.filter((m) => m.status === 'scheduled').sort((a, b) => (a.nextDate?.getTime() ?? 0) - (b.nextDate?.getTime() ?? 0)) },
-    { key: 'as_needed', label: 'As Needed', items: withStatus.filter((m) => m.status === 'as_needed') },
+    { key: 'as_needed', label: 'As Needed', items: withStatus.filter((m) => m.status === 'as_needed').sort(byFrequency) },
   ].filter((g) => g.items.length > 0);
 
   return (

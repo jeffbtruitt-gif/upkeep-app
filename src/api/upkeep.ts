@@ -370,6 +370,23 @@ export function getMaintenanceStatus(item: UpkeepMaintenance): MaintenanceStatus
   return 'scheduled';
 }
 
+/** Most frequent first — used to sort maintenance lists. */
+export const FREQ_ORDER: Record<AssetFrequency, number> = {
+  monthly: 0, quarterly: 1, twice_yearly: 2, yearly: 3, as_needed: 4,
+};
+
+export function byFrequency(a: UpkeepMaintenance, b: UpkeepMaintenance) {
+  return FREQ_ORDER[a.frequency] - FREQ_ORDER[b.frequency] || a.title.localeCompare(b.title);
+}
+
+export const FREQ_STYLES: Record<AssetFrequency, { bg: string; text: string; border: string }> = {
+  monthly:      { bg: '#efe8fa', text: '#5b2d9c', border: '#cdb8ee' },
+  quarterly:    { bg: '#e0f2f1', text: '#11665f', border: '#a6d6d1' },
+  twice_yearly: { bg: '#e6f2e2', text: '#2f6b1f', border: '#b5d8a8' },
+  yearly:       { bg: '#fbe8f1', text: '#9a2a62', border: '#efbdd4' },
+  as_needed:    { bg: '#ffffff', text: '#6b655d', border: '#d6d1c8' },
+};
+
 export const FREQ_LABELS: Record<AssetFrequency, string> = {
   monthly: 'Monthly', quarterly: 'Quarterly', twice_yearly: 'Twice a year', yearly: 'Yearly', as_needed: 'As needed',
 };

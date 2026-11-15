@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import {
-  useUpdateMaintenance, FREQ_LABELS, getNextDueDate, getMaintenanceStatus, fmtDate, todayISO,
+  useUpdateMaintenance, FREQ_LABELS, FREQ_STYLES, getNextDueDate, getMaintenanceStatus, fmtDate, todayISO,
   type UpkeepMaintenance,
 } from '@/api/upkeep';
 
@@ -14,8 +14,9 @@ export const MAINT_STATUS_STYLES = {
 };
 
 export function FrequencyPill({ frequency }: { frequency: UpkeepMaintenance['frequency'] }) {
+  const c = FREQ_STYLES[frequency];
   return (
-    <span style={{ background: '#e7efe9', color: F, border: '1px solid #cfe0d8', borderRadius: 9999, padding: '2px 9px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+    <span style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}`, borderRadius: 9999, padding: '2px 9px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
       <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden><path d="M10 6a4 4 0 1 1-1.2-2.85M10 1.5V3.5H8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
       {FREQ_LABELS[frequency]}
     </span>

@@ -6,7 +6,7 @@ import {
   useUpkeepMaintenance, useCreateMaintenance, useUpdateMaintenance, useDeleteMaintenance,
   useUpkeepLinks, useCreateLink, useUpdateLink, useDeleteLink,
   CAT_STYLES, UPKEEP_CATEGORIES, FREQ_LABELS,
-  getNextDueDate, getMaintenanceStatus, fmtDate,
+  getNextDueDate, getMaintenanceStatus, fmtDate, byFrequency,
   type UpkeepNote, type UpkeepMaintenance, type UpkeepLink, type AssetFrequency,
 } from '@/api/upkeep';
 import { MaintenanceDetailModal, FrequencyPill } from './MaintenanceDetailModal';
@@ -160,7 +160,8 @@ function ItemPhotosSection({ assetId }: { assetId: string }) {
 }
 
 function MaintenanceSection({ assetId, assetName }: { assetId: string; assetName: string }) {
-  const { data: items = [] } = useUpkeepMaintenance(assetId);
+  const { data: rawItems = [] } = useUpkeepMaintenance(assetId);
+  const items = [...rawItems].sort(byFrequency);
   const createMut = useCreateMaintenance();
   const updateMut = useUpdateMaintenance();
   const deleteMut = useDeleteMaintenance();
