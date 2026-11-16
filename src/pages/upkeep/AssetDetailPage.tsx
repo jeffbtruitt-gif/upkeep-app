@@ -6,11 +6,13 @@ import {
   useUpkeepMaintenance, useCreateMaintenance, useUpdateMaintenance, useDeleteMaintenance,
   useServiceLog, useSaveLogEntry, useDeleteLogEntry, type UpkeepLogEntry,
   useUpkeepLinks, useCreateLink, useUpdateLink, useDeleteLink,
+  useAssetTasks, useSaveOneTimeTask, type UpkeepTask,
   CAT_STYLES, UPKEEP_CATEGORIES, FREQ_LABELS,
-  getNextDueDate, getMaintenanceStatus, fmtDate, byFrequency, parseDateOnly, todayISO,
+  fmtDate, byFrequency, parseDateOnly, todayISO,
   type UpkeepNote, type UpkeepMaintenance, type UpkeepLink, type AssetFrequency,
 } from '@/api/upkeep';
 import { MaintenanceDetailModal, FrequencyPill } from './MaintenanceDetailModal';
+import { TaskRows, TaskModal } from './Tasks';
 import { useAssetPhotos, useUploadPhotos } from '@/api/photos';
 import { AddPhotosButton, PhotoGrid, PendingPhotos } from './Photos';
 import { useIsMobile, pagePad } from '@/lib/useIsMobile';
@@ -21,14 +23,6 @@ const F2 = '#3f7a64';
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '9px 12px', border: '1.5px solid #cfe0d8', borderRadius: 8,
   fontSize: 14, fontFamily: 'inherit', color: F, background: '#f3f7f4', outline: 'none', boxSizing: 'border-box',
-};
-
-const STATUS_STYLES = {
-  overdue:   { bg: '#fbeae7', text: '#c0392b', label: 'Overdue' },
-  due_soon:  { bg: '#f8efd9', text: '#8a5a00', label: 'Due soon' },
-  scheduled: { bg: '#e8f0f6', text: '#2c6e9c', label: 'Scheduled' },
-  as_needed: { bg: '#f1eee8', text: '#5e5953', label: 'As needed' },
-  done:      { bg: '#e6f2e2', text: '#2f6b1f', label: 'Done' },
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -163,73 +157,122 @@ function ItemPhotosSection({ assetId }: { assetId: string }) {
   );
 }
 
-function MaintenanceSection({ assetId, assetName }: { assetId: string; assetName: string }) {
+function TasksSection({ assetId, assetName }: { assetId: string; assetName: string }) {
+  const { data: tasks = [], isLoading } = useAssetTasks(assetId);
+  const saveMut = useSaveOneTimeTask();
+  const [showAll, setShowAll] = useState(false);
+  const [form, setForm] = useState<{ id?: string; title: string; due_date: string; description: string } | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const viewing = tasks.find((t) => t.id === viewingId) ?? null;
+  const LIMIT = 5;
+  const shown = showAll ? tasks : tasks.slice(0, LIMIT);
+
+  function openNew() { setForm({ title: '', due_date: todayISO(), description: '' }); }
+  function openEdit(t: UpkeepTask) { setViewingId(null); setForm({ id: t.id, title: t.title, due_date: t.due_date, description: t.description ?? '' }); }
+  async function save() {
+    if (!form?.title.trim() || !form.due_date) return;
+    await saveMut.mutateAsync({ id: form.id, asset_id: assetId, title: form.title.trim(), due_date: form.due_date, description: form.description || null });
+    setForm(null);
+  }
+
+  return (
+    <SectionCard title={`Upcoming Tasks (${tasks.length})`} action={!form ? <BtnGhost onClick={openNew}>+ One-time Task</BtnGhost> : undefined}>
+      {form ? (
+        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+            <Field label="Task *"><input value={form.title} onChange={(e) => setForm((f) => f && { ...f, title: e.target.value })} placeholder="e.g. Replace roof" style={inputStyle} autoFocus /></Field>
+            <Field label="Due Date *"><input type="date" value={form.due_date} onChange={(e) => setForm((f) => f && { ...f, due_date: e.target.value })} style={inputStyle} /></Field>
+          </div>
+          <Field label="Description"><textarea rows={3} value={form.description} onChange={(e) => setForm((f) => f && { ...f, description: e.target.value })} placeholder="Details…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} /></Field>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <BtnPrimary onClick={save} disabled={saveMut.isPending || !form.title.trim() || !form.due_date}>{saveMut.isPending ? 'Saving…' : 'Save Task'}</BtnPrimary>
+            <BtnGhost onClick={() => setForm(null)}>Cancel</BtnGhost>
+          </div>
+        </div>
+      ) : isLoading ? (
+        <div style={{ padding: '20px 18px', color: '#a39c92', fontSize: 13 }}>Loading…</div>
+      ) : tasks.length === 0 ? (
+        <div style={{ padding: '20px 18px', color: '#a39c92', fontSize: 13 }}>Nothing due. Add a schedule below, or a one-time task.</div>
+      ) : (
+        <>
+          <TaskRows tasks={shown} onOpen={(t) => setViewingId(t.id)} />
+          {tasks.length > LIMIT && (
+            <div onClick={() => setShowAll((v) => !v)} style={{ padding: '12px 18px', borderTop: '1px solid #f1eee8', fontSize: 13, fontWeight: 600, color: '#3f7a64', cursor: 'pointer', textAlign: 'center' }}>
+              {showAll ? 'Show fewer' : `Show all ${tasks.length}`}
+            </div>
+          )}
+        </>
+      )}
+      {viewing && <TaskModal task={viewing} assetName={assetName} onClose={() => setViewingId(null)} onEdit={() => openEdit(viewing)} />}
+    </SectionCard>
+  );
+}
+
+function SchedulesSection({ assetId, assetName }: { assetId: string; assetName: string }) {
   const mobile = useIsMobile();
   const { data: rawItems = [] } = useUpkeepMaintenance(assetId);
+  const { data: tasks = [] } = useAssetTasks(assetId);
   const items = [...rawItems].sort(byFrequency);
   const createMut = useCreateMaintenance();
   const updateMut = useUpdateMaintenance();
   const deleteMut = useDeleteMaintenance();
-  const [form, setForm] = useState<{ title: string; description: string; frequency: AssetFrequency; start_date: string; last_performed: string } | null>(null);
+  const [form, setForm] = useState<{ title: string; description: string; frequency: AssetFrequency; start_date: string } | null>(null);
   const [editing, setEditing] = useState<UpkeepMaintenance | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const viewing = items.find((m) => m.id === viewingId) ?? null;
+  const tasksFor = (id: string) => tasks.filter((t) => t.maintenance_id === id);
 
-  function openNew() { setEditing(null); setForm({ title: '', description: '', frequency: 'yearly', start_date: '', last_performed: '' }); }
-  function openEdit(m: UpkeepMaintenance) { setViewingId(null); setEditing(m); setForm({ title: m.title, description: m.description ?? '', frequency: m.frequency, start_date: m.start_date ?? '', last_performed: m.last_performed ?? '' }); }
+  function openNew() { setEditing(null); setForm({ title: '', description: '', frequency: 'quarterly', start_date: todayISO() }); }
+  function openEdit(m: UpkeepMaintenance) { setViewingId(null); setEditing(m); setForm({ title: m.title, description: m.description ?? '', frequency: m.frequency, start_date: m.start_date ?? '' }); }
   function cancel() { setForm(null); setEditing(null); }
 
+  const needsDate = form && form.frequency !== 'as_needed' && !form.start_date;
   async function save() {
-    if (!form?.title.trim()) return;
+    if (!form?.title.trim() || needsDate) return;
     const payload = {
-      asset_id: assetId, title: form.title, description: form.description || null, frequency: form.frequency,
+      asset_id: assetId, title: form.title.trim(), description: form.description || null, frequency: form.frequency,
       start_date: form.frequency === 'as_needed' ? null : form.start_date || null,
-      last_performed: form.last_performed || null,
     };
     if (editing) await updateMut.mutateAsync({ id: editing.id, ...payload });
-    else await createMut.mutateAsync(payload);
+    else await createMut.mutateAsync({ ...payload, last_performed: null });
     cancel();
   }
 
   return (
-    <SectionCard title={`Maintenance (${items.length})`} action={!form ? <BtnGhost onClick={openNew}>+ Add Item</BtnGhost> : undefined}>
+    <SectionCard title={`Schedules (${items.length})`} action={!form ? <BtnGhost onClick={openNew}>+ Add Schedule</BtnGhost> : undefined}>
       {form ? (
         <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Field label="Task Name"><input value={form.title} onChange={(e) => setForm((f) => f && { ...f, title: e.target.value })} placeholder="e.g. Replace HVAC Filter" style={inputStyle} autoFocus /></Field>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
-            <Field label="Frequency">
+            <Field label="Repeats">
               <select value={form.frequency} onChange={(e) => setForm((f) => f && { ...f, frequency: e.target.value as AssetFrequency })} style={inputStyle}>
-                {(['once', 'monthly', 'quarterly', 'twice_yearly', 'yearly', 'as_needed'] as AssetFrequency[]).map((v) => (
+                {(['monthly', 'quarterly', 'twice_yearly', 'yearly', 'as_needed'] as AssetFrequency[]).map((v) => (
                   <option key={v} value={v}>{FREQ_LABELS[v]}</option>
                 ))}
               </select>
             </Field>
-            <Field label={form.frequency === 'once' ? 'Completed' : 'Last Performed'}><input type="date" value={form.last_performed} onChange={(e) => setForm((f) => f && { ...f, last_performed: e.target.value })} style={inputStyle} /></Field>
             {form.frequency !== 'as_needed' && (
-              <Field label={form.frequency === 'once' ? 'Due Date' : 'Start Date'}><input type="date" value={form.start_date} onChange={(e) => setForm((f) => f && { ...f, start_date: e.target.value })} style={inputStyle} /></Field>
+              <Field label="First Due Date *"><input type="date" value={form.start_date} onChange={(e) => setForm((f) => f && { ...f, start_date: e.target.value })} style={inputStyle} /></Field>
             )}
           </div>
-          {form.frequency === 'once' && (
-            <div style={{ fontSize: 11.5, color: '#a39c92', marginTop: -4 }}>A one-time task is due on its Due Date. Leave Completed blank until it's done.</div>
+          {form.frequency !== 'as_needed' && (
+            <div style={{ fontSize: 12, color: '#a39c92', marginTop: -4, lineHeight: 1.5 }}>
+              Creates tasks on fixed dates from the first due date, 3 years out.{editing && ' Saving changes updates all open tasks; completed ones are kept.'}
+            </div>
           )}
-          {form.frequency !== 'as_needed' && form.frequency !== 'once' && (
-            <div style={{ fontSize: 11.5, color: '#a39c92', marginTop: -4 }}>Next due is calculated from Last Performed; Start Date is only used until the task has been done once.</div>
-          )}
-          <Field label="Description"><textarea rows={5} value={form.description} onChange={(e) => setForm((f) => f && { ...f, description: e.target.value })} placeholder="Additional details…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} /></Field>
+          <Field label="Description"><textarea rows={4} value={form.description} onChange={(e) => setForm((f) => f && { ...f, description: e.target.value })} placeholder="Additional details…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} /></Field>
           <div style={{ display: 'flex', gap: 8 }}>
-            <BtnPrimary onClick={save} disabled={createMut.isPending || updateMut.isPending}>{createMut.isPending || updateMut.isPending ? 'Saving…' : 'Save Item'}</BtnPrimary>
+            <BtnPrimary onClick={save} disabled={createMut.isPending || updateMut.isPending || !form.title.trim() || !!needsDate}>{createMut.isPending || updateMut.isPending ? 'Saving…' : 'Save Schedule'}</BtnPrimary>
             <BtnGhost onClick={cancel}>Cancel</BtnGhost>
           </div>
         </div>
       ) : items.length === 0 ? (
-        <div style={{ padding: '20px 18px', color: '#a39c92', fontSize: 13 }}>No maintenance items yet.</div>
+        <div style={{ padding: '20px 18px', color: '#a39c92', fontSize: 13 }}>No schedules yet.</div>
       ) : (
         items.map((m, i) => {
-          const next = getNextDueDate(m);
-          const st = STATUS_STYLES[getMaintenanceStatus(m)];
+          const next = tasksFor(m.id)[0];
           return (
-            <div key={m.id}
-              onClick={() => setViewingId(m.id)}
+            <div key={m.id} onClick={() => setViewingId(m.id)}
               onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f7f4')}
               onMouseLeave={(e) => (e.currentTarget.style.background = '')}
               style={{ padding: '14px 18px', borderBottom: i < items.length - 1 ? '1px solid #f1eee8' : 'none', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, cursor: 'pointer' }}>
@@ -237,25 +280,24 @@ function MaintenanceSection({ assetId, assetName }: { assetId: string; assetName
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
                   <div style={{ fontSize: mobile ? 15 : 13, fontWeight: 600, color: F }}>{m.title}</div>
                   <FrequencyPill frequency={m.frequency} />
-                  <span style={{ background: st.bg, color: st.text, borderRadius: 9999, padding: '2px 9px', fontSize: 11, fontWeight: 600 }}>{st.label}</span>
                 </div>
                 <div style={{ fontSize: mobile ? 13 : 12, color: '#7d776f' }}>
-                  {m.frequency === 'once'
-                    ? (m.last_performed ? `Completed ${fmtDate(m.last_performed)}` : `Due: ${fmtDate(m.start_date)}`)
-                    : <>Last done: {m.last_performed ? fmtDate(m.last_performed) : 'Never'}{next && ` · Next: ${fmtDate(next)}`}</>}
+                  {m.frequency === 'as_needed' ? 'No set dates'
+                    : !m.start_date ? <span style={{ color: '#8a5a00' }}>Needs a first due date</span>
+                    : next ? `Next: ${fmtDate(next.due_date)}` : 'No open tasks'}
+                  {m.last_performed && ` · Last done: ${fmtDate(m.last_performed)}`}
                 </div>
-                {m.description && <div style={{ fontSize: 14, color: '#5e5953', marginTop: 6, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{m.description}</div>}
               </div>
               <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                 <button onClick={() => openEdit(m)} style={{ background: '#f3f7f4', border: '1px solid #cfe0d8', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
-                <button onClick={() => { if (confirm(`Delete "${m.title}"?`)) deleteMut.mutate({ id: m.id, asset_id: assetId }); }} style={{ background: '#fbeae7', border: '1px solid #c0392b', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: '#c0392b', cursor: 'pointer', fontFamily: 'inherit' }}>×</button>
+                <button onClick={() => { if (confirm(`Delete schedule "${m.title}"? Its open tasks are removed; completed history is kept.`)) deleteMut.mutate({ id: m.id, asset_id: assetId }); }} style={{ background: '#fbeae7', border: '1px solid #c0392b', borderRadius: 5, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: '#c0392b', cursor: 'pointer', fontFamily: 'inherit' }}>×</button>
               </div>
             </div>
           );
         })
       )}
       {viewing && (
-        <MaintenanceDetailModal item={viewing} assetName={assetName} onClose={() => setViewingId(null)} onEdit={() => openEdit(viewing)} />
+        <MaintenanceDetailModal item={viewing} tasks={tasksFor(viewing.id)} assetName={assetName} onClose={() => setViewingId(null)} onEdit={() => openEdit(viewing)} />
       )}
     </SectionCard>
   );
@@ -563,7 +605,8 @@ export function AssetDetailPage() {
       </div>
 
       <ItemPhotosSection assetId={id} />
-      <MaintenanceSection assetId={id} assetName={asset.name} />
+      <TasksSection assetId={id} assetName={asset.name} />
+      <SchedulesSection assetId={id} assetName={asset.name} />
       <ServiceLogSection assetId={id} isVehicle={asset.category === 'vehicles'} />
       <NotesSection assetId={id} />
       <LinksSection assetId={id} />

@@ -8,7 +8,7 @@ const db = supabase as any;
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export type AssetStatus = 'active' | 'inactive';
-export type AssetFrequency = 'once' | 'monthly' | 'quarterly' | 'twice_yearly' | 'yearly' | 'as_needed';
+export type AssetFrequency = 'monthly' | 'quarterly' | 'twice_yearly' | 'yearly' | 'as_needed';
 
 export interface UpkeepAsset {
   id: string;
@@ -234,6 +234,7 @@ export function useCreateMaintenance() {
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: upkeepKeys.maintenance(vars.asset_id) });
       qc.invalidateQueries({ queryKey: ['upkeep', 'all-maintenance'] });
+      qc.invalidateQueries({ queryKey: ['upkeep', 'tasks'] });
     },
   });
 }
@@ -249,6 +250,7 @@ export function useUpdateMaintenance() {
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: upkeepKeys.maintenance(vars.asset_id) });
       qc.invalidateQueries({ queryKey: ['upkeep', 'all-maintenance'] });
+      qc.invalidateQueries({ queryKey: ['upkeep', 'tasks'] });
     },
   });
 }
@@ -264,6 +266,7 @@ export function useDeleteMaintenance() {
     onSuccess: (assetId) => {
       qc.invalidateQueries({ queryKey: upkeepKeys.maintenance(assetId) });
       qc.invalidateQueries({ queryKey: ['upkeep', 'all-maintenance'] });
+      qc.invalidateQueries({ queryKey: ['upkeep', 'tasks'] });
     },
   });
 }
@@ -286,7 +289,7 @@ export interface UpkeepLogEntry {
 
 export type LogInput = Pick<UpkeepLogEntry, 'asset_id' | 'service_date' | 'title' | 'description' | 'provider' | 'mileage' | 'cost' | 'invoice_number'>;
 
-const logKey = (assetId: string) => ['upkeep', 'service-log', assetId] as const;
+export const logKey = (assetId: string) => ['upkeep', 'service-log', assetId] as const;
 
 export function useServiceLog(assetId: string) {
   return useQuery({
@@ -330,6 +333,119 @@ export function useDeleteLogEntry() {
       qc.invalidateQueries({ queryKey: ['upkeep', 'photos', assetId] });
     },
   });
+}
+
+// ── Tasks (dated to-dos made by schedules, or one-time) ───────────────────
+
+export type TaskStatus = 'open' | 'done' | 'skipped';
+
+export interface UpkeepTask {
+  id: string;
+  asset_id: string;
+  maintenance_id: string | null;
+  title: string;
+  description: string | null;
+  due_date: string;
+  status: TaskStatus;
+  completed_on: string | null;
+  log_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TaskWithContext = UpkeepTask & {
+  upkeep_assets?: { name: string; household_id: string; status: string };
+  upkeep_maintenance?: { frequency: AssetFrequency } | null;
+};
+
+export function useAssetTasks(assetId: string) {
+  return useQuery({
+    queryKey: ['upkeep', 'tasks', 'asset', assetId],
+    enabled: !!assetId,
+    queryFn: async () => {
+      const { data, error } = await db.from('upkeep_tasks').select('*, upkeep_maintenance(frequency)')
+        .eq('asset_id', assetId).eq('status', 'open').order('due_date').order('title');
+      if (error) throw error;
+      return data as TaskWithContext[];
+    },
+  });
+}
+
+export function useAllOpenTasks() {
+  const hh = useHousehold();
+  return useQuery({
+    queryKey: ['upkeep', 'tasks', 'all', hh?.id ?? ''],
+    enabled: !!hh?.id,
+    queryFn: async () => {
+      const { data, error } = await db.from('upkeep_tasks')
+        .select('*, upkeep_assets!inner(name, household_id, status), upkeep_maintenance(frequency)')
+        .eq('upkeep_assets.household_id', hh!.id).eq('upkeep_assets.status', 'active')
+        .eq('status', 'open').order('due_date').order('title');
+      if (error) throw error;
+      return data as TaskWithContext[];
+    },
+  });
+}
+
+function invalidateTasks(qc: ReturnType<typeof useQueryClient>, assetId: string) {
+  qc.invalidateQueries({ queryKey: ['upkeep', 'tasks'] });
+  qc.invalidateQueries({ queryKey: logKey(assetId) });
+  qc.invalidateQueries({ queryKey: upkeepKeys.maintenance(assetId) });
+  qc.invalidateQueries({ queryKey: ['upkeep', 'all-maintenance'] });
+}
+
+/** One-time task (no schedule). */
+export function useSaveOneTimeTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...input }: { id?: string; asset_id: string; title: string; description: string | null; due_date: string }) => {
+      const q = id
+        ? db.from('upkeep_tasks').update({ ...input, updated_at: new Date().toISOString() }).eq('id', id)
+        : db.from('upkeep_tasks').insert(input);
+      const { error } = await q;
+      if (error) throw error;
+    },
+    onSuccess: (_, vars) => invalidateTasks(qc, vars.asset_id),
+  });
+}
+
+export function useDeleteTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string; asset_id: string }) => {
+      const { error } = await db.from('upkeep_tasks').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: (_, vars) => invalidateTasks(qc, vars.asset_id),
+  });
+}
+
+/** Mark done (adds a Maintenance Log entry) or skip (no log). Older open tasks on the same schedule are cleared. */
+export function useCompleteTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, done_on, skip }: { id: string; asset_id: string; done_on: string; skip: boolean }) => {
+      const { error } = await db.rpc('upkeep_complete_task', { p_task_id: id, p_done_on: done_on, p_skip: skip });
+      if (error) throw error;
+    },
+    onSuccess: (_, vars) => invalidateTasks(qc, vars.asset_id),
+  });
+}
+
+export type TaskDueStatus = 'overdue' | 'due_soon' | 'soon90' | 'later';
+
+export function daysUntil(dateStr: string): number {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = parseDateOnly(dateStr); d.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - today.getTime()) / 86400000);
+}
+
+export function getTaskStatus(t: Pick<UpkeepTask, 'due_date'>): TaskDueStatus {
+  const n = daysUntil(t.due_date);
+  if (n < 0) return 'overdue';
+  if (n <= 30) return 'due_soon';
+  if (n <= 90) return 'soon90';
+  return 'later';
 }
 
 // ── Links ──────────────────────────────────────────────────────────────────
@@ -384,7 +500,7 @@ export function useDeleteLink() {
 
 // ── Scheduling helpers ─────────────────────────────────────────────────────
 
-const FREQ_MONTHS: Record<Exclude<AssetFrequency, 'as_needed' | 'once'>, number> = {
+const FREQ_MONTHS: Record<Exclude<AssetFrequency, 'as_needed'>, number> = {
   monthly: 1, quarterly: 3, twice_yearly: 6, yearly: 12,
 };
 
@@ -406,12 +522,6 @@ export function fmtDate(d: Date | string | null | undefined): string {
 
 export function getNextDueDate(item: UpkeepMaintenance): Date | null {
   if (item.frequency === 'as_needed') return null;
-  // One-time task: due on its due date (stored in start_date) until it's marked done.
-  if (item.frequency === 'once') {
-    if (item.last_performed || !item.start_date) return null;
-    const d = parseDateOnly(item.start_date); d.setHours(0, 0, 0, 0);
-    return d;
-  }
   const months = FREQ_MONTHS[item.frequency];
   // If the task has been done, the next due date is one interval after that — it can be in the past (overdue).
   if (item.last_performed) {
@@ -427,11 +537,10 @@ export function getNextDueDate(item: UpkeepMaintenance): Date | null {
   return d;
 }
 
-export type MaintenanceStatus = 'overdue' | 'due_soon' | 'scheduled' | 'as_needed' | 'done';
+export type MaintenanceStatus = 'overdue' | 'due_soon' | 'scheduled' | 'as_needed';
 
 export function getMaintenanceStatus(item: UpkeepMaintenance): MaintenanceStatus {
   if (item.frequency === 'as_needed') return 'as_needed';
-  if (item.frequency === 'once' && item.last_performed) return 'done';
   const next = getNextDueDate(item);
   if (!next) return 'as_needed';
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -442,7 +551,7 @@ export function getMaintenanceStatus(item: UpkeepMaintenance): MaintenanceStatus
 }
 
 /** Most frequent first — used to sort maintenance lists. */
-export const FREQ_ORDER: Record<AssetFrequency, number> = {
+export const FREQ_ORDER: Record<AssetFrequency | 'once', number> = {
   monthly: 0, quarterly: 1, twice_yearly: 2, yearly: 3, once: 4, as_needed: 5,
 };
 
@@ -450,7 +559,7 @@ export function byFrequency(a: UpkeepMaintenance, b: UpkeepMaintenance) {
   return FREQ_ORDER[a.frequency] - FREQ_ORDER[b.frequency] || a.title.localeCompare(b.title);
 }
 
-export const FREQ_STYLES: Record<AssetFrequency, { bg: string; text: string; border: string }> = {
+export const FREQ_STYLES: Record<AssetFrequency | 'once', { bg: string; text: string; border: string }> = {
   once:         { bg: '#fdf1e6', text: '#8b3a00', border: '#f0c9a4' },
   monthly:      { bg: '#efe8fa', text: '#5b2d9c', border: '#cdb8ee' },
   quarterly:    { bg: '#e0f2f1', text: '#11665f', border: '#a6d6d1' },
@@ -459,7 +568,7 @@ export const FREQ_STYLES: Record<AssetFrequency, { bg: string; text: string; bor
   as_needed:    { bg: '#ffffff', text: '#6b655d', border: '#d6d1c8' },
 };
 
-export const FREQ_LABELS: Record<AssetFrequency, string> = {
+export const FREQ_LABELS: Record<AssetFrequency | 'once', string> = {
   once: 'One time', monthly: 'Monthly', quarterly: 'Quarterly', twice_yearly: 'Twice a year', yearly: 'Yearly', as_needed: 'As needed',
 };
 

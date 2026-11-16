@@ -1,20 +1,12 @@
 import { useEffect } from 'react';
 import {
-  useUpdateMaintenance, FREQ_LABELS, FREQ_STYLES, getNextDueDate, getMaintenanceStatus, fmtDate, todayISO,
-  type UpkeepMaintenance,
+  FREQ_LABELS, FREQ_STYLES, fmtDate,
+  type AssetFrequency, type UpkeepMaintenance, type UpkeepTask,
 } from '@/api/upkeep';
 
 const F = '#1d3a2c';
 
-export const MAINT_STATUS_STYLES = {
-  overdue:   { bg: '#fbeae7', text: '#c0392b', label: 'Overdue' },
-  due_soon:  { bg: '#f8efd9', text: '#8a5a00', label: 'Due soon' },
-  scheduled: { bg: '#e8f0f6', text: '#2c6e9c', label: 'Scheduled' },
-  as_needed: { bg: '#f1eee8', text: '#5e5953', label: 'As needed' },
-  done:      { bg: '#e6f2e2', text: '#2f6b1f', label: 'Done' },
-};
-
-export function FrequencyPill({ frequency }: { frequency: UpkeepMaintenance['frequency'] }) {
+export function FrequencyPill({ frequency }: { frequency: AssetFrequency | 'once' }) {
   const c = FREQ_STYLES[frequency];
   return (
     <span style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}`, borderRadius: 9999, padding: '2px 9px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -26,37 +18,25 @@ export function FrequencyPill({ frequency }: { frequency: UpkeepMaintenance['fre
 
 interface Props {
   item: UpkeepMaintenance;
+  tasks: UpkeepTask[]; // open tasks made by this schedule
   assetName?: string;
   onClose: () => void;
   onEdit?: () => void;
-  onOpenAsset?: () => void;
 }
 
-export function MaintenanceDetailModal({ item, assetName, onClose, onEdit, onOpenAsset }: Props) {
-  const updateMut = useUpdateMaintenance();
-  const next = getNextDueDate(item);
-  const st = MAINT_STATUS_STYLES[getMaintenanceStatus(item)];
-  const doneToday = item.last_performed === todayISO() || (item.frequency === 'once' && !!item.last_performed);
-
+/** Schedule details: the rule plus the next few dates it has created. */
+export function MaintenanceDetailModal({ item, tasks, assetName, onClose, onEdit }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  async function markDone() {
-    await updateMut.mutateAsync({ id: item.id, asset_id: item.asset_id, last_performed: todayISO() });
-  }
-
-  const facts = item.frequency === 'once' ? [
-    { label: 'Frequency', value: FREQ_LABELS[item.frequency] },
-    { label: 'Due Date', value: fmtDate(item.start_date) },
-    { label: 'Completed', value: item.last_performed ? fmtDate(item.last_performed) : 'Not yet' },
-  ] : [
-    { label: 'Frequency', value: FREQ_LABELS[item.frequency] },
-    { label: 'Last Performed', value: fmtDate(item.last_performed) },
-    { label: 'Next Due', value: item.frequency === 'as_needed' ? 'As needed' : fmtDate(next) },
-    ...(item.start_date ? [{ label: 'Start Date', value: fmtDate(item.start_date) }] : []),
+  const facts = [
+    { label: 'Repeats', value: FREQ_LABELS[item.frequency] },
+    { label: 'First Due', value: item.frequency === 'as_needed' ? '—' : fmtDate(item.start_date) },
+    { label: 'Last Done', value: fmtDate(item.last_performed) },
+    { label: 'Open Tasks', value: String(tasks.length) },
   ];
 
   return (
@@ -65,17 +45,14 @@ export function MaintenanceDetailModal({ item, assetName, onClose, onEdit, onOpe
         style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 12px 32px rgba(28,26,23,0.25)' }}>
         <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1eee8', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            {assetName && <div style={{ fontSize: 12, color: '#7d776f', marginBottom: 4 }}>{assetName}</div>}
+            {assetName && <div style={{ fontSize: 12, color: '#7d776f', marginBottom: 4 }}>{assetName} · Schedule</div>}
             <div style={{ fontSize: 19, fontWeight: 700, color: F, letterSpacing: '-0.01em', marginBottom: 8 }}>{item.title}</div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ background: st.bg, color: st.text, borderRadius: 9999, padding: '2px 9px', fontSize: 11, fontWeight: 600 }}>{st.label}</span>
-              <FrequencyPill frequency={item.frequency} />
-            </div>
+            <FrequencyPill frequency={item.frequency} />
           </div>
           <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: 22, lineHeight: 1, color: '#a39c92', cursor: 'pointer', padding: 4 }}>×</button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', borderBottom: '1px solid #f1eee8' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', borderBottom: '1px solid #f1eee8' }}>
           {facts.map((r) => (
             <div key={r.label} style={{ padding: '12px 22px' }}>
               <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a39c92', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>{r.label}</div>
@@ -84,23 +61,25 @@ export function MaintenanceDetailModal({ item, assetName, onClose, onEdit, onOpe
           ))}
         </div>
 
+        {item.frequency !== 'as_needed' && (
+          <div style={{ padding: '14px 22px', borderBottom: '1px solid #f1eee8' }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a39c92', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>Next Dates</div>
+            {!item.start_date
+              ? <div style={{ fontSize: 13.5, color: '#8a5a00' }}>Set a first due date to create tasks.</div>
+              : <div style={{ fontSize: 14, color: '#45413b', lineHeight: 1.7 }}>{tasks.slice(0, 4).map((t) => fmtDate(t.due_date)).join(' · ') || '—'}</div>}
+          </div>
+        )}
+
         <div style={{ padding: '14px 22px', borderBottom: '1px solid #f1eee8' }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, color: '#a39c92', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>Description</div>
           <div style={{ fontSize: 15, color: '#45413b', lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>{item.description || 'No description.'}</div>
         </div>
 
-        <div style={{ padding: '14px 22px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={markDone} disabled={updateMut.isPending || doneToday}
-            style={{ background: updateMut.isPending || doneToday ? '#a3c4b6' : F, color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 12.5, fontWeight: 600, cursor: doneToday ? 'default' : 'pointer', fontFamily: 'inherit' }}>
-            {doneToday ? (item.frequency === 'once' ? '✓ Done' : '✓ Done today') : updateMut.isPending ? 'Saving…' : 'Mark done today'}
-          </button>
-          {onEdit && (
-            <button onClick={onEdit} style={{ background: '#fff', border: '1.5px solid #cfe0d8', borderRadius: 6, padding: '8px 14px', fontSize: 12.5, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
-          )}
-          {onOpenAsset && (
-            <button onClick={onOpenAsset} style={{ background: '#fff', border: '1.5px solid #cfe0d8', borderRadius: 6, padding: '8px 14px', fontSize: 12.5, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>Open asset →</button>
-          )}
-        </div>
+        {onEdit && (
+          <div style={{ padding: '14px 22px' }}>
+            <button onClick={onEdit} style={{ background: '#fff', border: '1.5px solid #cfe0d8', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>Edit schedule</button>
+          </div>
+        )}
       </div>
     </div>
   );
