@@ -68,7 +68,7 @@ Traeger Grill, Kitchen Fridge (Zline RBIV-36), Furnace (Amana), Air Conditioner,
 ## Ideas not built yet
 
 - Undo for a completed/skipped task.
-- A first due date for the APEC filter and Furnace tune-up schedules that don't have one yet.
+- First due dates for the APEC filter schedules (none set yet, so they create no tasks).
 - A "Forgot password?" link on the login page.
 - A GM maintenance schedule for the Yukon.
 - Enable RLS on two non-Upkeep tables in the shared project (`Spanish Spelling Words`, `workout_progress`).
