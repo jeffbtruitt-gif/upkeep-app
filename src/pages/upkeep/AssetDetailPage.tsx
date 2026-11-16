@@ -246,7 +246,7 @@ function SchedulesSection({ assetId, assetName }: { assetId: string; assetName: 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
             <Field label="Repeats">
               <select value={form.frequency} onChange={(e) => setForm((f) => f && { ...f, frequency: e.target.value as AssetFrequency })} style={inputStyle}>
-                {(['monthly', 'quarterly', 'twice_yearly', 'yearly', 'as_needed'] as AssetFrequency[]).map((v) => (
+                {(['monthly', 'quarterly', 'twice_yearly', 'yearly', 'every_2_years', 'as_needed'] as AssetFrequency[]).map((v) => (
                   <option key={v} value={v}>{FREQ_LABELS[v]}</option>
                 ))}
               </select>

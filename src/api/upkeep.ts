@@ -8,7 +8,7 @@ const db = supabase as any;
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export type AssetStatus = 'active' | 'inactive';
-export type AssetFrequency = 'monthly' | 'quarterly' | 'twice_yearly' | 'yearly' | 'as_needed';
+export type AssetFrequency = 'monthly' | 'quarterly' | 'twice_yearly' | 'yearly' | 'every_2_years' | 'as_needed';
 
 export interface UpkeepAsset {
   id: string;
@@ -501,7 +501,7 @@ export function useDeleteLink() {
 // ── Scheduling helpers ─────────────────────────────────────────────────────
 
 const FREQ_MONTHS: Record<Exclude<AssetFrequency, 'as_needed'>, number> = {
-  monthly: 1, quarterly: 3, twice_yearly: 6, yearly: 12,
+  monthly: 1, quarterly: 3, twice_yearly: 6, yearly: 12, every_2_years: 24,
 };
 
 /** Parse a YYYY-MM-DD date as local noon so it never shifts a day across time zones. */
@@ -552,7 +552,7 @@ export function getMaintenanceStatus(item: UpkeepMaintenance): MaintenanceStatus
 
 /** Most frequent first — used to sort maintenance lists. */
 export const FREQ_ORDER: Record<AssetFrequency | 'once', number> = {
-  monthly: 0, quarterly: 1, twice_yearly: 2, yearly: 3, once: 4, as_needed: 5,
+  monthly: 0, quarterly: 1, twice_yearly: 2, yearly: 3, every_2_years: 4, once: 5, as_needed: 6,
 };
 
 export function byFrequency(a: UpkeepMaintenance, b: UpkeepMaintenance) {
@@ -565,11 +565,12 @@ export const FREQ_STYLES: Record<AssetFrequency | 'once', { bg: string; text: st
   quarterly:    { bg: '#e0f2f1', text: '#11665f', border: '#a6d6d1' },
   twice_yearly: { bg: '#e6f2e2', text: '#2f6b1f', border: '#b5d8a8' },
   yearly:       { bg: '#fbe8f1', text: '#9a2a62', border: '#efbdd4' },
+  every_2_years: { bg: '#e8eef8', text: '#2d4a8a', border: '#b9c8e8' },
   as_needed:    { bg: '#ffffff', text: '#6b655d', border: '#d6d1c8' },
 };
 
 export const FREQ_LABELS: Record<AssetFrequency | 'once', string> = {
-  once: 'One time', monthly: 'Monthly', quarterly: 'Quarterly', twice_yearly: 'Twice a year', yearly: 'Yearly', as_needed: 'As needed',
+  once: 'One time', monthly: 'Monthly', quarterly: 'Quarterly', twice_yearly: 'Twice a year', yearly: 'Yearly', every_2_years: 'Every 2 years', as_needed: 'As needed',
 };
 
 export const UPKEEP_CATEGORIES = [

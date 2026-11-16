@@ -21,7 +21,7 @@ All tables have RLS. Access is limited to the user's household through `tf_house
 | Table | Purpose | Key columns |
 |---|---|---|
 | `upkeep_assets` | Items (appliances, HVAC, vehicles…) | household_id, name, category, model_number, serial_number, location, purchase_date, purchase_price, warranty_expiry, description, status (`active`/`inactive`) |
-| `upkeep_maintenance` | **Schedules** (repeat rules) for an item | asset_id, title, description, frequency (`monthly`/`quarterly`/`twice_yearly`/`yearly`/`as_needed`), start_date (= first due date), last_performed (latest Mark done) |
+| `upkeep_maintenance` | **Schedules** (repeat rules) for an item | asset_id, title, description, frequency (`monthly`/`quarterly`/`twice_yearly`/`yearly`/`every_2_years`/`as_needed`), start_date (= first due date), last_performed (latest Mark done) |
 | `upkeep_tasks` | Dated to-dos made by a schedule, or one-time (maintenance_id null) | asset_id, maintenance_id, title, description, due_date, status (`open`/`done`/`skipped`), completed_on, log_id. Unique (maintenance_id, due_date) |
 | `upkeep_service_log` | "Maintenance Log": work actually done | asset_id, service_date, title, description, provider, mileage, cost, invoice_number |
 | `upkeep_notes` | Free-form notes | asset_id, title, body |
@@ -68,7 +68,7 @@ Traeger Grill, Kitchen Fridge (Zline RBIV-36), Furnace (Amana), Air Conditioner,
 ## Ideas not built yet
 
 - Undo for a completed/skipped task.
-- First due dates for the APEC filter schedules (none set yet, so they create no tasks).
+- First due dates for the APEC O-rings (yearly) and TDS test (quarterly) schedules (none set yet, so they create no tasks).
 - A "Forgot password?" link on the login page.
 - A GM maintenance schedule for the Yukon.
 - Enable RLS on two non-Upkeep tables in the shared project (`Spanish Spelling Words`, `workout_progress`).
