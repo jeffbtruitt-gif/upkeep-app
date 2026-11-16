@@ -8,7 +8,7 @@ const db = supabase as any;
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export type AssetStatus = 'active' | 'inactive';
-export type AssetFrequency = 'monthly' | 'quarterly' | 'twice_yearly' | 'yearly' | 'as_needed';
+export type AssetFrequency = 'once' | 'monthly' | 'quarterly' | 'twice_yearly' | 'yearly' | 'as_needed';
 
 export interface UpkeepAsset {
   id: string;
@@ -384,7 +384,7 @@ export function useDeleteLink() {
 
 // ── Scheduling helpers ─────────────────────────────────────────────────────
 
-const FREQ_MONTHS: Record<Exclude<AssetFrequency, 'as_needed'>, number> = {
+const FREQ_MONTHS: Record<Exclude<AssetFrequency, 'as_needed' | 'once'>, number> = {
   monthly: 1, quarterly: 3, twice_yearly: 6, yearly: 12,
 };
 
@@ -406,6 +406,12 @@ export function fmtDate(d: Date | string | null | undefined): string {
 
 export function getNextDueDate(item: UpkeepMaintenance): Date | null {
   if (item.frequency === 'as_needed') return null;
+  // One-time task: due on its due date (stored in start_date) until it's marked done.
+  if (item.frequency === 'once') {
+    if (item.last_performed || !item.start_date) return null;
+    const d = parseDateOnly(item.start_date); d.setHours(0, 0, 0, 0);
+    return d;
+  }
   const months = FREQ_MONTHS[item.frequency];
   // If the task has been done, the next due date is one interval after that — it can be in the past (overdue).
   if (item.last_performed) {
@@ -421,10 +427,11 @@ export function getNextDueDate(item: UpkeepMaintenance): Date | null {
   return d;
 }
 
-export type MaintenanceStatus = 'overdue' | 'due_soon' | 'scheduled' | 'as_needed';
+export type MaintenanceStatus = 'overdue' | 'due_soon' | 'scheduled' | 'as_needed' | 'done';
 
 export function getMaintenanceStatus(item: UpkeepMaintenance): MaintenanceStatus {
   if (item.frequency === 'as_needed') return 'as_needed';
+  if (item.frequency === 'once' && item.last_performed) return 'done';
   const next = getNextDueDate(item);
   if (!next) return 'as_needed';
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -436,7 +443,7 @@ export function getMaintenanceStatus(item: UpkeepMaintenance): MaintenanceStatus
 
 /** Most frequent first — used to sort maintenance lists. */
 export const FREQ_ORDER: Record<AssetFrequency, number> = {
-  monthly: 0, quarterly: 1, twice_yearly: 2, yearly: 3, as_needed: 4,
+  monthly: 0, quarterly: 1, twice_yearly: 2, yearly: 3, once: 4, as_needed: 5,
 };
 
 export function byFrequency(a: UpkeepMaintenance, b: UpkeepMaintenance) {
@@ -444,6 +451,7 @@ export function byFrequency(a: UpkeepMaintenance, b: UpkeepMaintenance) {
 }
 
 export const FREQ_STYLES: Record<AssetFrequency, { bg: string; text: string; border: string }> = {
+  once:         { bg: '#fdf1e6', text: '#8b3a00', border: '#f0c9a4' },
   monthly:      { bg: '#efe8fa', text: '#5b2d9c', border: '#cdb8ee' },
   quarterly:    { bg: '#e0f2f1', text: '#11665f', border: '#a6d6d1' },
   twice_yearly: { bg: '#e6f2e2', text: '#2f6b1f', border: '#b5d8a8' },
@@ -452,7 +460,7 @@ export const FREQ_STYLES: Record<AssetFrequency, { bg: string; text: string; bor
 };
 
 export const FREQ_LABELS: Record<AssetFrequency, string> = {
-  monthly: 'Monthly', quarterly: 'Quarterly', twice_yearly: 'Twice a year', yearly: 'Yearly', as_needed: 'As needed',
+  once: 'One time', monthly: 'Monthly', quarterly: 'Quarterly', twice_yearly: 'Twice a year', yearly: 'Yearly', as_needed: 'As needed',
 };
 
 export const UPKEEP_CATEGORIES = [

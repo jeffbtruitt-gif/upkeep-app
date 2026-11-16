@@ -19,6 +19,7 @@ const STATUS_STYLES = {
   due_soon:  { bg: '#f8efd9', text: '#8a5a00', label: 'Due soon' },
   scheduled: { bg: '#e8f0f6', text: '#2c6e9c', label: 'Scheduled' },
   as_needed: { bg: '#f1eee8', text: '#5e5953', label: 'As needed' },
+  done:      { bg: '#e6f2e2', text: '#2f6b1f', label: 'Done' },
 };
 
 function fmt(d: Date) {
@@ -45,7 +46,7 @@ export function UpkeepDashboardPage() {
   const overdue = maintWithStatus.filter((m) => m.status === 'overdue');
   const dueSoon = maintWithStatus.filter((m) => m.status === 'due_soon');
   const upcoming = [...maintWithStatus]
-    .filter((m) => m.status !== 'as_needed')
+    .filter((m) => m.status !== 'as_needed' && m.status !== 'done')
     .sort((a, b) => {
       if (!a.nextDate) return 1;
       if (!b.nextDate) return -1;

@@ -11,6 +11,7 @@ const STATUS_STYLES = {
   due_soon:  { bg: '#f8efd9', text: '#8a5a00', label: 'Due soon' },
   scheduled: { bg: '#e8f0f6', text: '#2c6e9c', label: 'Scheduled' },
   as_needed: { bg: '#f1eee8', text: '#5e5953', label: 'As needed' },
+  done:      { bg: '#e6f2e2', text: '#2f6b1f', label: 'Done' },
 };
 
 const COLS = '2fr 1.2fr 130px 115px 115px 105px';
@@ -31,6 +32,7 @@ export function MaintenancePage() {
     { key: 'due_soon',  label: 'Due Soon', items: withStatus.filter((m) => m.status === 'due_soon').sort(byFrequency) },
     { key: 'scheduled', label: 'Upcoming', items: withStatus.filter((m) => m.status === 'scheduled').sort((a, b) => (a.nextDate?.getTime() ?? 0) - (b.nextDate?.getTime() ?? 0)) },
     { key: 'as_needed', label: 'As Needed', items: withStatus.filter((m) => m.status === 'as_needed').sort(byFrequency) },
+    { key: 'done',      label: 'Completed', items: withStatus.filter((m) => m.status === 'done').sort((a, b) => (b.last_performed ?? '').localeCompare(a.last_performed ?? '')) },
   ].filter((g) => g.items.length > 0);
 
   return (
@@ -68,8 +70,10 @@ export function MaintenancePage() {
                     <div style={{ fontSize: 13, color: '#7d776f', marginTop: 4 }}>{m.assetName}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px 12px', flexWrap: 'wrap', marginTop: 7, fontSize: 13, color: '#5e5953' }}>
                       <FrequencyPill frequency={m.frequency} />
-                      <span style={{ whiteSpace: 'nowrap' }}>Last: {m.last_performed ? fmtDate(m.last_performed) : 'Never'}</span>
-                      {m.nextDate && <span style={{ whiteSpace: 'nowrap' }}>Next: {fmtDate(m.nextDate)}</span>}
+                      {m.frequency === 'once'
+                        ? (m.last_performed && <span style={{ whiteSpace: 'nowrap' }}>Done: {fmtDate(m.last_performed)}</span>)
+                        : <span style={{ whiteSpace: 'nowrap' }}>Last: {m.last_performed ? fmtDate(m.last_performed) : 'Never'}</span>}
+                      {m.nextDate && <span style={{ whiteSpace: 'nowrap' }}>{m.frequency === 'once' ? 'Due' : 'Next'}: {fmtDate(m.nextDate)}</span>}
                     </div>
                   </div>
                 );

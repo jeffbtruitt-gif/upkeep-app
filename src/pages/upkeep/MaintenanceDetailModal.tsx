@@ -11,13 +11,14 @@ export const MAINT_STATUS_STYLES = {
   due_soon:  { bg: '#f8efd9', text: '#8a5a00', label: 'Due soon' },
   scheduled: { bg: '#e8f0f6', text: '#2c6e9c', label: 'Scheduled' },
   as_needed: { bg: '#f1eee8', text: '#5e5953', label: 'As needed' },
+  done:      { bg: '#e6f2e2', text: '#2f6b1f', label: 'Done' },
 };
 
 export function FrequencyPill({ frequency }: { frequency: UpkeepMaintenance['frequency'] }) {
   const c = FREQ_STYLES[frequency];
   return (
     <span style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}`, borderRadius: 9999, padding: '2px 9px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-      <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden><path d="M10 6a4 4 0 1 1-1.2-2.85M10 1.5V3.5H8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      {frequency !== 'once' && <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden><path d="M10 6a4 4 0 1 1-1.2-2.85M10 1.5V3.5H8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>}
       {FREQ_LABELS[frequency]}
     </span>
   );
@@ -35,7 +36,7 @@ export function MaintenanceDetailModal({ item, assetName, onClose, onEdit, onOpe
   const updateMut = useUpdateMaintenance();
   const next = getNextDueDate(item);
   const st = MAINT_STATUS_STYLES[getMaintenanceStatus(item)];
-  const doneToday = item.last_performed === todayISO();
+  const doneToday = item.last_performed === todayISO() || (item.frequency === 'once' && !!item.last_performed);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -47,7 +48,11 @@ export function MaintenanceDetailModal({ item, assetName, onClose, onEdit, onOpe
     await updateMut.mutateAsync({ id: item.id, asset_id: item.asset_id, last_performed: todayISO() });
   }
 
-  const facts = [
+  const facts = item.frequency === 'once' ? [
+    { label: 'Frequency', value: FREQ_LABELS[item.frequency] },
+    { label: 'Due Date', value: fmtDate(item.start_date) },
+    { label: 'Completed', value: item.last_performed ? fmtDate(item.last_performed) : 'Not yet' },
+  ] : [
     { label: 'Frequency', value: FREQ_LABELS[item.frequency] },
     { label: 'Last Performed', value: fmtDate(item.last_performed) },
     { label: 'Next Due', value: item.frequency === 'as_needed' ? 'As needed' : fmtDate(next) },
@@ -87,7 +92,7 @@ export function MaintenanceDetailModal({ item, assetName, onClose, onEdit, onOpe
         <div style={{ padding: '14px 22px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={markDone} disabled={updateMut.isPending || doneToday}
             style={{ background: updateMut.isPending || doneToday ? '#a3c4b6' : F, color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 12.5, fontWeight: 600, cursor: doneToday ? 'default' : 'pointer', fontFamily: 'inherit' }}>
-            {doneToday ? '✓ Done today' : updateMut.isPending ? 'Saving…' : 'Mark done today'}
+            {doneToday ? (item.frequency === 'once' ? '✓ Done' : '✓ Done today') : updateMut.isPending ? 'Saving…' : 'Mark done today'}
           </button>
           {onEdit && (
             <button onClick={onEdit} style={{ background: '#fff', border: '1.5px solid #cfe0d8', borderRadius: 6, padding: '8px 14px', fontSize: 12.5, fontWeight: 600, color: F, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>

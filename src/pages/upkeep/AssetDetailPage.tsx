@@ -28,6 +28,7 @@ const STATUS_STYLES = {
   due_soon:  { bg: '#f8efd9', text: '#8a5a00', label: 'Due soon' },
   scheduled: { bg: '#e8f0f6', text: '#2c6e9c', label: 'Scheduled' },
   as_needed: { bg: '#f1eee8', text: '#5e5953', label: 'As needed' },
+  done:      { bg: '#e6f2e2', text: '#2f6b1f', label: 'Done' },
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -198,17 +199,20 @@ function MaintenanceSection({ assetId, assetName }: { assetId: string; assetName
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
             <Field label="Frequency">
               <select value={form.frequency} onChange={(e) => setForm((f) => f && { ...f, frequency: e.target.value as AssetFrequency })} style={inputStyle}>
-                {(['monthly', 'quarterly', 'twice_yearly', 'yearly', 'as_needed'] as AssetFrequency[]).map((v) => (
+                {(['once', 'monthly', 'quarterly', 'twice_yearly', 'yearly', 'as_needed'] as AssetFrequency[]).map((v) => (
                   <option key={v} value={v}>{FREQ_LABELS[v]}</option>
                 ))}
               </select>
             </Field>
-            <Field label="Last Performed"><input type="date" value={form.last_performed} onChange={(e) => setForm((f) => f && { ...f, last_performed: e.target.value })} style={inputStyle} /></Field>
+            <Field label={form.frequency === 'once' ? 'Completed' : 'Last Performed'}><input type="date" value={form.last_performed} onChange={(e) => setForm((f) => f && { ...f, last_performed: e.target.value })} style={inputStyle} /></Field>
             {form.frequency !== 'as_needed' && (
-              <Field label="Start Date"><input type="date" value={form.start_date} onChange={(e) => setForm((f) => f && { ...f, start_date: e.target.value })} style={inputStyle} /></Field>
+              <Field label={form.frequency === 'once' ? 'Due Date' : 'Start Date'}><input type="date" value={form.start_date} onChange={(e) => setForm((f) => f && { ...f, start_date: e.target.value })} style={inputStyle} /></Field>
             )}
           </div>
-          {form.frequency !== 'as_needed' && (
+          {form.frequency === 'once' && (
+            <div style={{ fontSize: 11.5, color: '#a39c92', marginTop: -4 }}>A one-time task is due on its Due Date. Leave Completed blank until it's done.</div>
+          )}
+          {form.frequency !== 'as_needed' && form.frequency !== 'once' && (
             <div style={{ fontSize: 11.5, color: '#a39c92', marginTop: -4 }}>Next due is calculated from Last Performed; Start Date is only used until the task has been done once.</div>
           )}
           <Field label="Description"><textarea rows={5} value={form.description} onChange={(e) => setForm((f) => f && { ...f, description: e.target.value })} placeholder="Additional details…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} /></Field>
@@ -236,8 +240,9 @@ function MaintenanceSection({ assetId, assetName }: { assetId: string; assetName
                   <span style={{ background: st.bg, color: st.text, borderRadius: 9999, padding: '2px 9px', fontSize: 11, fontWeight: 600 }}>{st.label}</span>
                 </div>
                 <div style={{ fontSize: mobile ? 13 : 12, color: '#7d776f' }}>
-                  Last done: {m.last_performed ? fmtDate(m.last_performed) : 'Never'}
-                  {next && ` · Next: ${fmtDate(next)}`}
+                  {m.frequency === 'once'
+                    ? (m.last_performed ? `Completed ${fmtDate(m.last_performed)}` : `Due: ${fmtDate(m.start_date)}`)
+                    : <>Last done: {m.last_performed ? fmtDate(m.last_performed) : 'Never'}{next && ` · Next: ${fmtDate(next)}`}</>}
                 </div>
                 {m.description && <div style={{ fontSize: 14, color: '#5e5953', marginTop: 6, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{m.description}</div>}
               </div>

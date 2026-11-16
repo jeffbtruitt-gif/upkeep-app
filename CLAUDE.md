@@ -21,7 +21,7 @@ All tables have RLS. Access is limited to the user's household through `tf_house
 | Table | Purpose | Key columns |
 |---|---|---|
 | `upkeep_assets` | Items (appliances, HVAC, vehicles…) | household_id, name, category, model_number, serial_number, location, purchase_date, purchase_price, warranty_expiry, description, status (`active`/`inactive`) |
-| `upkeep_maintenance` | Recurring tasks for an item | asset_id, title, description, frequency (`monthly`/`quarterly`/`twice_yearly`/`yearly`/`as_needed`), start_date, last_performed |
+| `upkeep_maintenance` | Recurring tasks for an item | asset_id, title, description, frequency (`once`/`monthly`/`quarterly`/`twice_yearly`/`yearly`/`as_needed`), start_date, last_performed. For `once` tasks, start_date is the due date and last_performed is the completion date |
 | `upkeep_service_log` | "Maintenance Log": work actually done | asset_id, service_date, title, description, provider, mileage, cost, invoice_number |
 | `upkeep_notes` | Free-form notes | asset_id, title, body |
 | `upkeep_links` | Manuals, parts, product pages | asset_id, name, url, description |
@@ -34,7 +34,8 @@ All tables have RLS. Access is limited to the user's household through `tf_house
 ## Behavior rules
 
 - **Next due date:** with `last_performed` set, next due is `last_performed + interval` and can be overdue. Without it, the date rolls forward from `start_date`. With neither, or `as_needed`, there is no due date.
-- **Statuses:** overdue, due soon (≤30 days), scheduled, as needed.
+- **One-time tasks** (`once`): due on start_date; once last_performed is set the status is `done` and they move to "Completed".
+- **Statuses:** overdue, due soon (≤30 days), scheduled, as needed, done.
 - **Sort order:** maintenance lists sort most-frequent first (`byFrequency`). Frequency chips are color-coded (`FREQ_STYLES` in `src/api/upkeep.ts`).
 - **Dates:** parse date-only strings with `parseDateOnly` (local noon) to avoid off-by-one-day errors in Central time.
 - **Descriptions:** render with `whiteSpace: 'pre-wrap'` so line breaks show.
